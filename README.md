@@ -22,7 +22,7 @@ cmake -DCMAKE_BUILD_TYPE=Release ..
 make spydrpick
 ```
 
-This should set up the CMake project, compile the binary and place it into the `bin` directory. If not, then take a look at [Compile-time dependencies](README.md/#compile--time-dependencies).
+This should set up the CMake project, compile the binary and place it into the `bin` directory. If not, then take a look at [Compile-time dependencies](README.md/#compile-time-dependencies).
 
 The spydrpick binary will by default be statically linked, except for the standard C++ runtime library, which is unfeasible to link statically, and [TBB](https://www.threadingbuildingblocks.org/) that can only be linked dynamically. Installing spydrpick to another location is as easy as copying the binary (given that the [TBB](https://www.threadingbuildingblocks.org/) runtime library is properly installed on your system).
 
