@@ -1,0 +1,10 @@
+# Internal helper function for printing of status messages
+function( setup_message message_string )
+	set( PREFIX "${PROJECT_NAME} setup:" )
+	if( ARGN MATCHES INDENT )
+		string( REGEX REPLACE "." " " PAD ${PREFIX} )
+		message( "${PAD} ${message_string}" )
+	else()
+		message( "${PREFIX} ${message_string}" )
+	endif()
+endfunction()

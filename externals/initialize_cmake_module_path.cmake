@@ -1,0 +1,6 @@
+# initialize CMAKE_MODULE_PATH from shell variable with the same name
+if( DEFINED ENV{CMAKE_MODULE_PATH} )
+	string( REPLACE ":" ";" TEMP_CMAKE_MODULE_PATH $ENV{CMAKE_MODULE_PATH} )
+	set( CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} ${TEMP_CMAKE_MODULE_PATH} )
+	unset( TEMP_CMAKE_MODULE_PATH )
+endif()
