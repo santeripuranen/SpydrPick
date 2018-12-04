@@ -17,8 +17,8 @@ include_directories(
 link_directories( ${Boost_LIBRARY_DIRS} )
 
 set( SPYDRPICK_SOURCES
-	spydrpick.cpp
-	spydrpick_options.cpp
+	SpydrPick.cpp
+	SpydrPick_options.cpp
 ) # *.cpp *.hpp *.cc
 
 #################################
@@ -48,31 +48,31 @@ set( CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${SPYDRPICK_GCC_OPTIMIZATION_FLAGS}" )
 set( CMAKE_LINKER "ld.gold" )
 
 if( SPYDRPICK_SOURCES )
-	add_executable( spydrpick
+	add_executable( SpydrPick
 		${SPYDRPICK_SOURCES}
 	)
-	target_link_libraries( spydrpick apegrunt )
-	set_target_properties( spydrpick PROPERTIES COMPILE_FLAGS "--std=c++14 ${SPYDRPICK_GCC_OPTIMIZATION_FLAGS}" )
+	target_link_libraries( SpydrPick apegrunt )
+	set_target_properties( SpydrPick PROPERTIES COMPILE_FLAGS "--std=c++14 ${SPYDRPICK_GCC_OPTIMIZATION_FLAGS}" )
 endif()
 
 # Add Boost libraries
 if( NOT SPYDRPICK_NO_BOOST )
-	target_link_libraries( spydrpick ${Boost_LIBRARIES} )
+	target_link_libraries( SpydrPick ${Boost_LIBRARIES} )
 endif()
 
 # Add TBB libraries
 if( NOT SPYDRPICK_NO_TBB )
-	target_link_libraries( spydrpick ${TBB_LIBRARIES} )
+	target_link_libraries( SpydrPick ${TBB_LIBRARIES} )
 endif()
 
 # Add pthreads library if building in UNIX
 if( UNIX )
-	target_link_libraries( spydrpick pthread )
+	target_link_libraries( SpydrPick pthread )
 endif( UNIX )
 
 # Prevent linking against shared libraries on OS X;
 # Apple gcc always links against a shared version of a library if present,
 # regardless of -Bstatic or equivalent linker flags.
 if(APPLE)
-	set_target_properties( spydrpick PROPERTIES LINK_SEARCH_END_STATIC TRUE )
+	set_target_properties( SpydrPick PROPERTIES LINK_SEARCH_END_STATIC TRUE )
 endif(APPLE)
