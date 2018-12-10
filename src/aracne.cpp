@@ -19,9 +19,15 @@
 	@author Santeri Puranen
 */
 
+#include <cstdlib>
+#include <iostream>
+
 #include "boost/program_options.hpp"
 #include "boost/filesystem/operations.hpp" // includes boost/filesystem/path.hpp
 
+#include "misc/Stopwatch.hpp" // from apegrunt
+
+#include "aracne.h"
 #include "aracne.hpp"
 
 /*
@@ -32,15 +38,15 @@ int main(int argc, char **argv)
 	namespace po = boost::program_options;
 	namespace fs = boost::filesystem;
 
-	#ifndef ARACNE_NO_TBB // Threading with Threading Building Blocks
+	#ifndef SPYDRPICK_NO_TBB // Threading with Threading Building Blocks
 	tbb::task_scheduler_init tbb_task_scheduler(tbb::task_scheduler_init::deferred); // Threading task scheduler
-	#endif // #ifndef ARACNE_NO_TBB
+	#endif // #ifndef SPYDRPICK_NO_TBB
 
+	using namespace aracne;
 	using std::exit;
 
-	std::cout << SpydrPick_options::s_get_version_string() << "\n"
-			  << apegrunt::Apegrunt_options::s_get_version_string() << "\n\n"
-			  << SpydrPick_options::s_get_copyright_notice_string() << "\n"
+	std::cout << ARACNE_options::s_get_version_string() << "\n"
+			  << ARACNE_options::s_get_copyright_notice_string() << "\n"
 			  << std::endl;
 
 	// Parse command line options
