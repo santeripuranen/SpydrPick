@@ -60,7 +60,7 @@ if( SPYDRPICK_SOURCES )
 	set_target_properties( SpydrPick PROPERTIES COMPILE_FLAGS "--std=c++14 ${SPYDRPICK_GCC_OPTIMIZATION_FLAGS}" )
 endif()
 
-if( ARACNE_SOURECES )
+if( ARACNE_SOURCES )
 	add_executable( aracne
 		${ARACNE_SOURCES}
 	)
@@ -70,7 +70,7 @@ endif()
 # Add Boost libraries
 if( NOT SPYDRPICK_NO_BOOST )
 	target_link_libraries( SpydrPick ${Boost_LIBRARIES} )
-	target_link_libraties( aracne ${Boost_LIBRARIES} )
+	target_link_libraries( aracne ${Boost_LIBRARIES} )
 endif()
 
 # Add TBB libraries
