@@ -21,6 +21,11 @@ set( SPYDRPICK_SOURCES
 	SpydrPick_options.cpp
 ) # *.cpp *.hpp *.cc
 
+set( ARACNE_SOURCES
+	aracne.cpp
+	aracne_options.cpp
+)
+
 #################################
 ## Add libraries and executables
 ###
@@ -55,19 +60,29 @@ if( SPYDRPICK_SOURCES )
 	set_target_properties( SpydrPick PROPERTIES COMPILE_FLAGS "--std=c++14 ${SPYDRPICK_GCC_OPTIMIZATION_FLAGS}" )
 endif()
 
+if( ARACNE_SOURECES )
+	add_executable( aracne
+		${ARACNE_SOURCES}
+	)
+	set_target_properties( aracne PROPERTIES COMPILE_FLAGS "--std=c++14 ${SPYDRPICK_GCC_OPTIMIZATION_FLAGS}" )
+endif()
+
 # Add Boost libraries
 if( NOT SPYDRPICK_NO_BOOST )
 	target_link_libraries( SpydrPick ${Boost_LIBRARIES} )
+	target_link_libraties( aracne ${Boost_LIBRARIES} )
 endif()
 
 # Add TBB libraries
 if( NOT SPYDRPICK_NO_TBB )
 	target_link_libraries( SpydrPick ${TBB_LIBRARIES} )
+	target_link_libraries( aracne ${TBB_LIBRARIES} )
 endif()
 
 # Add pthreads library if building in UNIX
 if( UNIX )
 	target_link_libraries( SpydrPick pthread )
+	target_link_libraries( aracne pthread )
 endif( UNIX )
 
 # Prevent linking against shared libraries on OS X;
@@ -75,4 +90,5 @@ endif( UNIX )
 # regardless of -Bstatic or equivalent linker flags.
 if(APPLE)
 	set_target_properties( SpydrPick PROPERTIES LINK_SEARCH_END_STATIC TRUE )
+	set_target_properties( aracne PROPERTIES LINK_SEARCH_END_STATIC TRUE )
 endif(APPLE)
