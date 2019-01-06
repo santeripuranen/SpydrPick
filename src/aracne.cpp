@@ -118,7 +118,7 @@ void custom_sort(std::vector<std::pair<uint32_t, uint32_t>>& vector, uint32_t ne
 /*
  * If node id was already mapped, returns mapped node id. Otherwise maps node id in edge list to {0, 1, ..., 2^32} and (possibly) creates a new node mutex.
 */
-inline uint32_t get_node_mapping_and_do_allocations(std::vector<std::vector<std::pair<uint32_t, uint32_t>>>& nodes, std::unordered_map<uint64_t, uint32_t>& node_mapping, uint64_t new_node, std::vector<std::shared_ptr<std::mutex>>& node_mtx, uint32_t node_mtx_grouping_size) {
+inline uint32_t get_node_mapping_and_do_allocations(std::vector<std::vector<std::pair<uint32_t, uint32_t>>>& nodes, std::unordered_map<uint32_t, uint32_t>& node_mapping, uint32_t new_node, std::vector<std::shared_ptr<std::mutex>>& node_mtx, uint32_t node_mtx_grouping_size) {
     if (node_mapping.count(new_node) == 0) { // Map new node and create new mutex
         if (nodes.size() % node_mtx_grouping_size == 0) node_mtx.emplace_back(std::shared_ptr<std::mutex>(new std::mutex));
         node_mapping.emplace(new_node, (uint32_t) nodes.size());
@@ -153,26 +153,29 @@ std::vector<std::pair<uint32_t, uint32_t>> join_maps_to_vector(std::vector<std::
  * Reads next block of edges into the edge vectors, maps new nodes and creates new node mutexes.
  * This function cannot be reasonably parallelized.
 */
-void read_edges(const std::vector<double>& data, std::vector<std::vector<std::pair<uint32_t, uint32_t>>>& nodes, std::unordered_map<uint64_t, uint32_t>& node_mapping,
-        std::vector<edge>& edges, std::vector<std::shared_ptr<std::mutex>>& node_mtx, uint32_t node_mtx_grouping_size, uint32_t block_start, uint32_t block_end) {
+void read_edges(const std::vector<uint32_t>& edges_data, const std::vector<double>& mi_data, std::vector<std::vector<std::pair<uint32_t, uint32_t>>>& nodes,
+        std::unordered_map<uint32_t, uint32_t>& node_mapping, std::vector<edge>& edges, std::vector<std::shared_ptr<std::mutex>>& node_mtx,
+        uint32_t node_mtx_grouping_size, uint32_t block_start, uint32_t block_end) {
     for (uint32_t edge_id = block_start; edge_id < block_end; ++edge_id) {
         // Maps node ids in edge list to {0, 1, ..., 2^32}
-        uint32_t nodei_id = get_node_mapping_and_do_allocations(nodes, node_mapping, (uint64_t) data[edge_id * 3], node_mtx, node_mtx_grouping_size);
-        uint32_t nodej_id = get_node_mapping_and_do_allocations(nodes, node_mapping, (uint64_t) data[edge_id * 3 + 1], node_mtx, node_mtx_grouping_size);
-        double mi = data[edge_id * 3 + 2];
-        edges[edge_id].update(edge_id, nodei_id, nodej_id, mi);
+        uint32_t nodei_id = get_node_mapping_and_do_allocations(nodes, node_mapping, edges_data[edge_id * 2], node_mtx, node_mtx_grouping_size);
+        uint32_t nodej_id = get_node_mapping_and_do_allocations(nodes, node_mapping, edges_data[edge_id * 2 + 1], node_mtx, node_mtx_grouping_size);
+        edges[edge_id].update(edge_id, nodei_id, nodej_id, mi_data[edge_id]);
     }
 }
 
 /*
  * The ARACNE procedure.
 */
-void aracne(const std::string& filename, uint32_t n_edges, std::vector<std::vector<std::pair<uint32_t, uint32_t>>>& nodes, std::unordered_map<uint64_t, uint32_t>& node_mapping, 
-        std::vector<edge>& edges, double threshold, uint32_t n_threads, uint32_t block_size, uint32_t node_mtx_grouping_size) {
+void aracne(const std::string& edges_file, const std::string& mi_file, uint32_t n_edges, std::vector<std::vector<std::pair<uint32_t, uint32_t>>>& nodes,
+        std::unordered_map<uint32_t, uint32_t>& node_mapping, std::vector<edge>& edges, double threshold, uint32_t n_threads,
+        uint32_t block_size, uint32_t node_mtx_grouping_size, uint32_t debug) {
     // Start by reading all data to memory.
     // Todo: We don't have to, we can keep the ifstream open and read one block at a time.
-    std::vector<double> data(n_edges * 3);
-    std::ifstream(filename, std::ios::in | std::ios::binary).read((char*) data.data(), n_edges * 3 * sizeof(double));
+    std::vector<uint32_t> edges_data(n_edges * 2);
+    std::vector<double> mi_data(n_edges);
+    std::ifstream(edges_file, std::ios::in | std::ios::binary).read((char*) edges_data.data(), n_edges * 2 * sizeof(uint32_t));
+    std::ifstream(mi_file, std::ios::in | std::ios::binary).read((char*) mi_data.data(), n_edges * sizeof(double));
     // Also: We need more file reading options (csv-file) and can use Santtu's data structures.
 
     std::vector<std::shared_ptr<std::mutex>> node_mtx;
@@ -247,7 +250,7 @@ void aracne(const std::string& filename, uint32_t n_edges, std::vector<std::vect
         // Read next block of edges.
         auto start_reading_edges = TIME_NOW;
         uint32_t block_end = std::min(block + block_size, n_edges);
-        read_edges(data, nodes, node_mapping, edges, node_mtx, node_mtx_grouping_size, block, block_end); // Single-threaded
+        read_edges(edges_data, mi_data, nodes, node_mapping, edges, node_mtx, node_mtx_grouping_size, block, block_end); // Single-threaded
         auto end_reading_edges = TIME_NOW;
         time_reading_edges += TIME_TAKEN(start_reading_edges, end_reading_edges);
 
@@ -279,45 +282,111 @@ void aracne(const std::string& filename, uint32_t n_edges, std::vector<std::vect
         time_processing += TIME_TAKEN(start_processing, end_processing);
     }
 
-    std::cout << "Time spent reading: " << get_time(time_reading_edges + time_adding_edges + time_sorting) << " (reading edges: " << get_time(time_reading_edges)
-        << ", adding edges: " << get_time(time_adding_edges) << ", sorting: " << get_time(time_sorting) << ")\nTime spent processing: " << get_time(time_processing) << '\n';
+    if (debug) {
+        std::printf("Debug ARACNE: Reading blocks %s\n - reading edges %s\n - adding edges %s\n - sorting %s\nDebug ARACNE: Processing blocks %s\n",
+        get_time(time_reading_edges + time_adding_edges + time_sorting).data(), get_time(time_reading_edges).data(), 
+        get_time(time_adding_edges).data(), get_time(time_sorting).data(), get_time(time_processing).data());
+    }
+}
+
+// Todo: Use boost/program_options.
+char* get_argument(char** begin, char** end, const std::string& opt, const std::string& alt) {
+    auto itr = std::find(begin, end, opt);
+    if (itr != end && ++itr != end) return *itr;
+    itr = std::find(begin, end, alt);
+    return (itr != end && ++itr != end ? *itr : nullptr);
 }
 
 /*
  * The main program.
+ *
+ * Compile with g++ -std=c++11 -pthread -O3 aracne.cpp -o aracne
+ * Minimal run with ./aracne -e ARG -m ARG -n ARG -o ARG
+ * Display help with '-h'.
+ *
+ * Command line arguments:
+ *  -e, --edges-file
+ *  -m, --mi-file
+ *  -n, --number-of-edges
+ *  -o, --output-file
+ * [ -t, --threads]
+ * [-b, --block-size] 
+ * [--threshold]
+ * [--node-mtx-grouping-size]
+ * [-d, --debug]
+ * [-h, --help]
 */
 int main(int argc, char** argv) {
-    if (argc < 6) {std::cerr << "Please call with filename, number of edges, threshold, block_size and threads!\n"; return 0;}
+    // Read arguments
+    if (argc == 1) {
+        std::printf("aracne - description goes here\n\nCopyright goes here\n\nUse '-h' or '--help' for a list of available options.\n");
+        return 0;
+    }
+    char** argv_end = argv + argc;
+    if (std::find(argv, argv_end, std::string("-h")) != argv_end || std::find(argv, argv_end, std::string("--help")) != argv_end) {
+        std::printf("aracne - description goes here\n%-40s %-30s\n%-40s %-30s\n%-40s %-30s\n%-40s %-30s\n%-40s %-30s\n%-40s %-30s\n%-40s %-30s\n%-40s %-30s\n%-40s %-30s\n%-40s %-30s\n",
+                "  -e [ --edges-file ] ARG", "Path to file containing edges.",
+                "  -m [ --mi-file ] ARG", "Path to file containing MI values.",
+                "  -n [ --number-of-edges ] ARG", "Number of edges to read from files.",
+                "  -o [ --output-file ] ARG", "Path for output file.",
+                " (-t [ --threads ] ARG)", "Number of threads (=1).",
+                " (-b [ --block-size ] ARG)", "Block size for graph processing (=16384).", 
+                " (--threshold ARG)", "ARACNE threshold (=epsilon)",
+                " (--node-mtx-grouping-size ARG)", "Grouping size for node mutexes (=16).",
+                " (-d [ --debug ]", "Print debug information.",
+                " (-h [ --help ])", "Print this list.");
+        return 0;
+    }
+    char* arg_reader = get_argument(argv, argv_end, "-e", "--edges-file"); if (!arg_reader) {std::printf("Error: Missing edges file (-e).\n"); return 0;}
+    std::string edges_file(arg_reader);
 
-    // Read input and initialize
-    auto start = TIME_NOW;
-    std::string filename_in(argv[1]);
-    uint64_t n_edges = std::stoll(argv[2]);
-    if (n_edges > std::numeric_limits<uint32_t>::max()) {std::cerr << "n_edges = " << n_edges << " > 2^32\n"; return 0;} // Safeguard against more than 2^32 edges.
-    double threshold = std::stod(argv[3]);
-    if (threshold <= 0.0) threshold = std::numeric_limits<double>::epsilon(); // Use machine epsilon instead of 0 threshold, otherwise algorithm cannot work meaningfully.
-    uint32_t block_size = std::stoi(argv[4]);
-    uint32_t n_threads = std::max(1, std::stoi(argv[5]));
-    uint32_t node_mtx_grouping_size = (argc > 6 ? std::max(1, std::stoi(argv[6])) : 16); // Not a required argument. Playing around with this doesn't change much.
+    arg_reader = get_argument(argv, argv_end, "-m", "--mi-file"); if (!arg_reader) {std::printf("Error: Missing MI file (-m).\n"); return 0;}
+    std::string mi_file(arg_reader);
+
+    arg_reader = get_argument(argv, argv_end, "-o", "--output-file"); if (!arg_reader) {std::printf("Error: Missing output file (-o).\n"); return 0;}
+    std::string output_file(arg_reader);
+
+    arg_reader = get_argument(argv, argv_end, "-n", "--number-of-edges"); if (!arg_reader) {std::printf("Error: Missing number of edges (-n).\n"); return 0;}
+    if (std::stoll(arg_reader) > std::numeric_limits<uint32_t>::max()) {std::printf("Number of edges larger than 2^32.\n"); return 0;} // Safeguard
+    uint32_t n_edges(std::stoi(arg_reader));
+
+    arg_reader = get_argument(argv, argv_end, "-t", "--threads");
+    uint32_t n_threads = (arg_reader ? std::stoi(arg_reader) : 1);
+
+    arg_reader = get_argument(argv, argv_end, "-b", "--block-size");
+    uint32_t block_size = (arg_reader ? std::stoi(arg_reader) : 16384);
+
+    arg_reader = get_argument(argv, argv_end, "--node-mtx-grouping-size", "--node-mtx-grouping-size");
+    uint32_t node_mtx_grouping_size = (arg_reader ? std::stoi(arg_reader) : 16);
+
+    arg_reader = get_argument(argv, argv_end, "--threshold", "--threshold");
+    double threshold = (arg_reader ? std::stod(arg_reader) : std::numeric_limits<double>::epsilon());
+    // Currently threshold=0 is not supported. If desired, it can be easily implemented by adding backpropagating code for blocks in the ARACNE procedure.
+    if (threshold <= 0.0) {std::printf("Set threshold from %f to epsilon.\n", threshold); threshold = std::numeric_limits<double>::epsilon();}
+
+    uint32_t debug = (std::find(argv, argv_end, std::string("-d")) != argv_end || std::find(argv, argv_end, std::string("--debug")) != argv_end ? 1 : 0);
+
+    // Initialize data structures.
     std::vector<std::vector<std::pair<uint32_t, uint32_t>>> nodes; // Vector of nodes stores each node's neighbors as a vector of (edge_id, node_id) pairs.
-    std::unordered_map<uint64_t, uint32_t> node_mapping; // Nodes in user-provided edge list can range in {0, ..., 2^64} but will be mapped to {0, ..., 2^32}.
+    std::unordered_map<uint32_t, uint32_t> node_mapping; // Nodes in user-provided edge list can range freely but will be mapped sequentially to {0, 1, ...}.
     std::vector<struct edge> edges(n_edges);
-    // Start ARACNE procedure.
-    aracne(filename_in, n_edges, nodes, node_mapping, edges, threshold, n_threads, block_size, node_mtx_grouping_size);
-    auto end = TIME_NOW;
-    std::cout << "Read input file, initialized and ran ARACNE procedure -- TOTAL " << get_time(TIME_TAKEN(start, end)) << '\n';
 
-    // Write output as a boolean list of edges remaining after the ARACNE procedure, in same order as input.
-    // Todo: Output is binary now, but we probably want a csv-format.
+    // Start ARACNE procedure.
+    auto start = TIME_NOW;
+    aracne(edges_file, mi_file, n_edges, nodes, node_mapping, edges, threshold, n_threads, block_size, node_mtx_grouping_size, debug);
+    auto end = TIME_NOW;
+    std::cout << "Ran ARACNE procedure -- " << get_time(TIME_TAKEN(start, end)) << '\n';
+
+    // Write output as a boolean list of edges remaining after the ARACNE procedure, in same order as input, stored as uint32_t.
+    // Todo: Input&output files are binary now, but we probably want a csv-format.
     start = TIME_NOW;
-    std::string filename_out = filename_in + "_aracne";
-    std::vector<double> data_out(n_edges);
+    std::vector<uint32_t> data_out(n_edges);
     for (uint32_t i = 0; i < n_edges; ++i) data_out[i] = !edges[i].marked_for_removal;
-    std::ofstream(filename_out, std::ios::out | std::ios::binary).write((char*) data_out.data(), n_edges * sizeof(double));
+    std::ofstream(output_file, std::ios::out | std::ios::binary).write((char*) data_out.data(), n_edges * sizeof(uint32_t));
     end = TIME_NOW;
     std::cout << "Wrote output file -- " << get_time(TIME_TAKEN(start, end)) << '\n';
 
     // Debug: Print out count of edges remaining after the ARACNE procedure.
-    std::cout << "(Debug) Count of edges remaining after the ARACNE procedure: " << std::accumulate(edges.begin(), edges.end(), 0, [](uint32_t sum, const edge& e) {return sum + !e.marked_for_removal;}) << '\n';
+    if (debug) std::printf("Debug output: Direct edges after ARACNE procedure: %d.\n", std::accumulate(edges.begin(), edges.end(), 0, [](uint32_t sum, const edge& e) {return sum + !e.marked_for_removal;}));
 
 }
