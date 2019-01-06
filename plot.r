@@ -81,10 +81,10 @@ direct_mi <- mi[1:n_edges][aracne[1:n_edges]]
 
 png(paste(output_directory_path, "/plot_", width, "x", height, "_", n_edges, "edges.png", sep=""), 
     width = width, height = height, pointsize = pointsize)
-plot(indirect_edge_distances, indirect_mi, col = color_indirect, type = "p", cex = 0.1, 
+plot(indirect_edge_distances, indirect_mi, col = color_indirect, type = "p", pch = 19, cex = 0.1, 
      xlim = c(0, max_distance), ylim = c(min_mi, 1), xaxs = "i", yaxs = "i",
      xlab = "", ylab = "", xaxt = "n", yaxt = "n", bty = "n")
-lines(direct_edge_distances, direct_mi, col = color_direct, type = "p", cex = 0.1)
+lines(direct_edge_distances, direct_mi, col = color_direct, type = "p", pch = 19, cex = 0.3)
 axis(1, at = seq(0, max_distance, 10^exponent), tick = FALSE, labels = seq(0, max_distance / 10^exponent), line = -0.8)
 title(xlab = "Distance between positions (bp)", line = 1.2)
 title(xlab = substitute(x10^exp, list(exp = exponent)), line = 1.4, adj = 1)
