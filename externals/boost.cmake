@@ -2,7 +2,7 @@
 
 cmake_minimum_required(VERSION 3.1)
 
-#option( ${CMAKE_PROJECT_NAME}_ENABLE_BOOST "Find Boost and, if successful, enable use in SuperDCA" true )
+#option( ${CMAKE_PROJECT_NAME}_ENABLE_BOOST "Find Boost and, if successful, enable use in ${CMAKE_PROJECT_NAME}" true )
 
 ###############
 ## Boost setup
