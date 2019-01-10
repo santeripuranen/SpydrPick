@@ -43,12 +43,11 @@
 #include "apegrunt/Alignment_StateVector_weights.hpp"
 #include "apegrunt/Loci.h"
 
-#include "misc/Stopwatch.hpp"
-#include "misc/Matrix_math.hpp"
-#include "misc/CouplingStorage.hpp"
-#include "misc/Gauges.hpp"
+#include "misc/Stopwatch.hpp" // apegrunt
+#include "misc/Matrix_math.hpp" // apegrunt
 
 #include "graph/Graph.hpp" // apegrunt
+#include "graph/Graph_output_format.hpp" // apegrunt
 
 #include "mi.hpp"
 
@@ -90,16 +89,6 @@ bool run_SpydrPick( std::vector< apegrunt::Alignment_ptr<StateT> >& alignments /
 		}
 		return false;
 	}
-/*
-	if(	SpydrPick_options::keep_n_best_couples() == 0 )
-	{
-		if( SpydrPick_options::verbose() )
-		{
-			*SpydrPick_options::get_out_stream() << "SpydrPick: will not calculate coupling parameters, since user has requested that no solutions should be stored.\n";
-		}
-		return true;
-	}
-*/
 
 	auto block_indices = alignments.front()->get_block_indices();
 	auto block_range = boost::make_iterator_range( cbegin(block_indices), cend(block_indices) );
@@ -184,69 +173,9 @@ bool run_SpydrPick( std::vector< apegrunt::Alignment_ptr<StateT> >& alignments /
 				cputimer.start();
 
 #pragma message("Index translation not implemented!")
-				*(couplings_file->stream()) << network;
+				*(couplings_file->stream()) << apegrunt::Graph_output_formatter<state_t>(network,alignments.front());
 
 				// ignore index translations
-/*
-				auto index_translation_dim1 = alignments.front()->get_loci_translation();
-				auto index_translation_dim2 = alignments.back()->get_loci_translation();
-
-				const std::size_t base_index = apegrunt::Apegrunt_options::get_output_indexing_base();
-
-				auto& couplings_out = *couplings_file->stream();
-
-				{
-					for( auto r_itr = cbegin(loci_list); r_itr != cend(loci_list); ++r_itr )
-					{
-						couplings_out.precision(8); couplings_out << std::fixed;
-						const auto r = *r_itr;
-						const auto r_index = (*index_translation_dim1)[r]+base_index;
-						if( alignments.size() > 1 )
-						{
-							for( auto n_itr = cbegin(loci_list2); n_itr != cend(loci_list2); ++n_itr )
-							{
-								const auto n = *n_itr;
-								const auto Jij_norm = Jij_storage.get_Jij_score(r,n);
-
-								couplings_out << Jij_norm << " " << r_index << " " << (*index_translation_dim2)[n]+base_index << "\n";
-							}
-						}
-						else
-						{
-							for( auto n_itr = cbegin(loci_list); n_itr != r_itr; ++n_itr )
-							{
-								using apegrunt::operator*;
-
-								const auto n = *n_itr;
-								const auto Jij_norm = Jij_storage.get_Jij_score(r,n);
-								const auto Jji_norm = Jij_storage.get_Jij_score(n,r);
-
-								const auto J = (Jij_norm+Jji_norm)*0.5;
-
-								coupling_distribution(J);
-
-								couplings_out << J << " " << r_index << " " << (*index_translation_dim2)[n]+base_index << "\n";
-							}
-						}
-					}
-				}
-				cputimer.stop(); cputimer.print_timing_stats();
-
-				cputimer.start();
-
-				// create an svg of the coupling value distribution
-				//auto svg_file = apegrunt::get_unique_ofstream( alignments.front()->id_string()+"."+apegrunt::size_string(alignments.front())+".spydrpick_coupling_distribution.svg" );
-				//*svg_file->stream() << apegrunt::accumulators::svg(acc::distribution(coupling_distribution)) << "\n";
-
-				// create an csv file of the coupling value distribution
-				auto csv_file = apegrunt::get_unique_ofstream( alignments.front()->id_string()+"."+apegrunt::size_string(alignments.front())+".spydrpick_coupling_distribution.csv" );
-				*csv_file->stream() << apegrunt::accumulators::csv(acc::distribution(coupling_distribution));
-
-				// output statistics of the coupling value distribution
-				SpydrPick_options::get_out_stream()->precision(6); *SpydrPick_options::get_out_stream() << std::scientific;
-				*SpydrPick_options::get_out_stream() << "SpydrPick: coupling value distribution mean=" << boost::accumulators::distribution_mean(coupling_distribution)
-							<< " std=" << boost::accumulators::distribution_std(coupling_distribution) << "\n";
-*/
 				cputimer.stop(); cputimer.print_timing_stats();
 			}
 		}
