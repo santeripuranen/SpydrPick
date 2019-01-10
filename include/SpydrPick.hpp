@@ -106,23 +106,8 @@ bool run_SpydrPick( std::vector< apegrunt::Alignment_ptr<StateT> >& alignments /
 		if( SpydrPick_options::verbose() ) { cputimer.print_timing_stats(); *SpydrPick_options::get_out_stream() << "\n"; }
 
 		// Evaluate pair-wise scores
-
 		cputimer.start();
 
-		// refresh block accounting
-		//std::cout << "SpydrPick: alignments.size()=" << alignments.size() << std::endl;
-/*
-		for( auto& alignment: alignments )
-		{
-			std::cout << "SpydrPick: block accounting" << std::endl;
-			alignment->get_block_accounting();
-			std::cout << "SpydrPick: statepresence accounting" << std::endl;
-			alignment->get_statepresence_blocks();
-			std::cout << "SpydrPick: statecount accounting" << std::endl;
-			alignment->get_statecount_blocks()->size();
-			std::cout << "SpydrPick: refreshed" << std::endl;
-		}
-*/
 		if( SpydrPick_options::verbose() )
 		{
 			*SpydrPick_options::get_out_stream() << "SpydrPick: get MI solver\n"; SpydrPick_options::get_out_stream()->flush();
@@ -154,13 +139,11 @@ bool run_SpydrPick( std::vector< apegrunt::Alignment_ptr<StateT> >& alignments /
 		network->sort();
 		cputimer.stop(); cputimer.print_timing_stats();
 
-	// /*
 		// output final coupling scores
 		std::ostringstream extension;
 		extension << apegrunt::Apegrunt_options::get_output_indexing_base() << "-based"; // indicate base index
 
 		{
-
 			// Ensure that we always get a unique output filename
 			auto couplings_file = apegrunt::get_unique_ofstream( alignments.front()->id_string()+"."+apegrunt::size_string(alignments.front())+(alignments.size() > 1 ? ".scan" : "")+".spydrpick_couplings."+extension.str()+".all" );
 
@@ -172,10 +155,9 @@ bool run_SpydrPick( std::vector< apegrunt::Alignment_ptr<StateT> >& alignments /
 				}
 				cputimer.start();
 
-#pragma message("Index translation not implemented!")
+				// produce output
 				*(couplings_file->stream()) << apegrunt::Graph_output_formatter<state_t>(network,alignments.front());
 
-				// ignore index translations
 				cputimer.stop(); cputimer.print_timing_stats();
 			}
 		}
