@@ -23,6 +23,8 @@
 #define ARACNE_OPTIONS_H
 
 #include <iosfwd>
+#include <string>
+#include <vector>
 
 // Boost includes
 #include <boost/program_options.hpp>
@@ -75,8 +77,8 @@ private:
 
 	static int s_threads;
 
-	std::vector< std::string > m_edgelist_filenames;
-	std::string m_output_filename;
+	static std::vector< std::string > s_edgelist_filenames;
+	static std::string s_output_filename;
 	static double s_edge_threshold;
 
 	static const std::string s_title_string;
@@ -89,6 +91,7 @@ private:
 
 	static void s_init_verbose( const bool& verbose );
 	static void s_init_threads( const int& nthreads );
+	static void s_init_output_filename( const std::string& filename );
 
 	po::options_description
 		m_general_options/*("aracne general options")*/,

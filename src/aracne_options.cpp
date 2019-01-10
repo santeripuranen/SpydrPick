@@ -83,15 +83,19 @@ const std::string ARACNE_options::s_long_copyright_notice(
     + "along with this program. If not, see <http://www.gnu.org/licenses/>."
 );
 
-SpydrPick_options::ARACNE_options() { this->m_init(); }
-SpydrPick_options::~ARACNE_options() { }
+ARACNE_options::ARACNE_options() { this->m_init(); }
+ARACNE_options::~ARACNE_options() { }
 
-SpydrPick_options::ARACNE_options( std::ostream *out, std::ostream *err )
+ARACNE_options::ARACNE_options( std::ostream *out, std::ostream *err )
 {
 	ARACNE_options::s_out = out;
 	ARACNE_options::s_err = err;
 	this->m_init();
 }
+
+std::vector< std::string > ARACNE_options::s_edgelist_filenames;
+std::string ARACNE_options::s_output_filename;
+
 
 double ARACNE_options::s_edge_threshold = std::numeric_limits<double>::lowest();
 
@@ -100,8 +104,8 @@ const std::string& ARACNE_options::s_get_usage_string() { return s_usage_string;
 const std::string& ARACNE_options::s_get_version_string() { return s_version_string; }
 const std::string& ARACNE_options::s_get_title_string() { return s_title_string; }
 
-bool ARACNE_options::has_edgelist_filenames() const { return !m_edgelist_filenames.empty(); }
-const std::vector< std::string >& ARACNE_options::get_edgelist_filenames() const { return m_edgelist_filenames; }
+bool ARACNE_options::has_edgelist_filenames() const { return !s_edgelist_filenames.empty(); }
+const std::vector< std::string >& ARACNE_options::get_edgelist_filenames() const { return s_edgelist_filenames; }
 
 double ARACNE_options::get_edge_threshold() { return s_edge_threshold; }
 void ARACNE_options::set_edge_threshold( double threshold ) { s_edge_threshold = threshold; }
@@ -126,9 +130,9 @@ void ARACNE_options::m_init()
 	m_general_options.add_options()
 		("help,h", "Print this help message.")
 		("verbose,v", po::bool_switch( &ARACNE_options::s_verbose )->default_value(ARACNE_options::s_verbose)->notifier(ARACNE_options::s_init_verbose), "Be verbose.")
-		("edgelistfile", po::value< std::vector< std::string > >( &ARACNE_options::m_edgelist_filenames )->composing(), "The input edgelist filename(s). When two or more filenames are specified, the edges found in each file are assumed to be subpartitions of the same network.")
-		("outputfile,o", po::value< std::string >( &ARACNE_options::m_output_filename )->notifier(ARACNE_options::s_init_output_filename), "The output filename. By default output filename is derived from the first input edgelist filename.")
-		("threshold", po::value< double >(&ARACNE_options::s_edge_threshold)->default_value(ARACNE_options::s_edge_threshold), "Edges with strength below the threshold will be discarded before ARACNE." )
+		("edgelistfile", po::value< std::vector< std::string > >( &ARACNE_options::s_edgelist_filenames )->composing(), "The input edgelist filename(s). When two or more filenames are specified, the edges found in each file are assumed to be subpartitions of the same network.")
+		("outputfile,o", po::value< std::string >( &ARACNE_options::s_output_filename )->notifier(ARACNE_options::s_init_output_filename), "The output filename. By default output filename is derived from the first input edgelist filename.")
+		("threshold", po::value< double >( &ARACNE_options::s_edge_threshold )->default_value(ARACNE_options::s_edge_threshold), "Edges with strength below the threshold will be discarded before ARACNE." )
 	;
 	m_parallel_options.add_options()
 #ifndef SPYDRPICK_NO_TBB // Threading with Threading Building Blocks
@@ -152,7 +156,7 @@ bool ARACNE_options::CheckOptions( boost::program_options::variables_map *varmap
 		if( varmap->count("help") && s_out )
 		{
 			*s_out << s_title_string << "\n" << s_usage_string << s_options_string << std::endl;
-			aracne::Exit(EXIT_SUCCESS);
+			exit(EXIT_SUCCESS);
 		}
 
 		if( !varmap->count("alignmentfile") && s_err )
@@ -208,7 +212,6 @@ void ARACNE_options::s_init_threads( const int& nthreads )
 
 void ARACNE_options::s_init_output_filename( const std::string& filename )
 {
-	m_output_filename
 	if( verbose && s_out )
 	{
 		*s_out << "ARACNE: user-defined output filename is \"" << filename << "\"\n";
