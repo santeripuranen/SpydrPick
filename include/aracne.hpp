@@ -22,9 +22,14 @@
 #define ARACNE_HPP
 
 namespace aracne {
-
+/*
 #pragma message("Implement ARACNE here")
 
+void run_ARACNE( network )
+{
+	return;
+}
+*/
 } // namespace aracne
 
 #endif // ARACNE_HPP
