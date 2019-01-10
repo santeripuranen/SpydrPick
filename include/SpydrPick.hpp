@@ -179,7 +179,7 @@ bool run_SpydrPick( std::vector< apegrunt::Alignment_ptr<StateT> >& alignments /
 			{
 				if( SpydrPick_options::verbose() )
 				{
-					*SpydrPick_options::get_out_stream() << "\nSpydrPick: writing coupling values to file \"" << couplings_file->name() << "\"\n";
+					*SpydrPick_options::get_out_stream() << "\nSpydrPick: writing coupling values (" << network->size() << ") to file \"" << couplings_file->name() << "\"\n";
 				}
 				cputimer.start();
 
