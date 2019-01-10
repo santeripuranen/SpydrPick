@@ -2,7 +2,7 @@
 
 cmake_minimum_required(VERSION 3.1)
 
-#option( ${CMAKE_PROJECT_NAME}_ENABLE_TBB "Find TBB and, if successful, enable use in SuperDCA" true )
+#option( ${CMAKE_PROJECT_NAME}_ENABLE_TBB "Find TBB and, if successful, enable use in ${CMAKE_PROJECT_NAME}" true )
 
 ##############
 ## Threading Building Blocks setup
@@ -12,7 +12,7 @@ set( ${CMAKE_PROJECT_NAME}_NO_TBB true CACHE INTERNAL "Don't use TBB, if true" )
 if( ${CMAKE_PROJECT_NAME}_ENABLE_TBB )
 	setup_message( "check for TBB" )
 	# If FindTBB.cmake is not present in your system, then
-	# get it from http://findtbb.googlecode.com/svn/trunk
+	# get it from https://github.com/Kitware/VTK/blob/master/CMake/FindTBB.cmake
 	# FindTBB.cmake can be installed anywhere as long as
 	# the CMAKE_MODULE_PATH (shell) environment variable
 	# is set to point to that location.
