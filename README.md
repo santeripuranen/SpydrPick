@@ -15,27 +15,21 @@ followed by pruning of edges that represent indirect couplings.
 
 ## Building SpydrPick
 
-In order to compile the `SpydrPick` binary, go to the `build` directory (create one if necessary; in-source builds are strongly discouraged) and give these commands:
+Run `make` in the main directory to compile the prototype binaries.
 
+
+## Running SpydrPick
+
+Here are simple running instructions for the prototype version. You need a row-major binary data file that contains 32 bit integers, a binary weights file that contains doubles and a binary loci file that contains 32 bit integers.
+
+First, run
 ```
-cmake ..
-make SpydrPick
+./build/mi_gwes -f path_to_data -l path_to_loci -w path_to_weights -d number_of_variables -n number_of_samples -t number_of_threads -o output_file_prefix
 ```
+to get two output files `output_file_prefix_count_edges` and `output_file_prefix_count_mi`. Then, run
+```
+./build/aracne -e output_file_prefix_count_edges -m output_file_prefix_count_mi -n count -t number_of_threads -o aracne_output_file
+```
+to get the output file `aracne_output_file` that contains a boolean list of direct/indirect edges.
 
-This should set up the CMake project, compile the binary and place it into the `bin` directory. If not, then take a look at [Compile-time dependencies](README.md/#compile-time-dependencies).
-
-The `SpydrPick` binary will by default be statically linked, except for the standard C++ runtime library, which is unfeasible to link statically, and [TBB](https://www.threadingbuildingblocks.org/) that can only be linked dynamically. Installing SpydrPick to another location is as easy as copying the binary (given that the [TBB](https://www.threadingbuildingblocks.org/) runtime library is properly installed on your system).
-
-
-### Compile-time dependencies
-
-The SpydrPick code is written in C++ and wrapped into a [CMake](https://cmake.org/) project. It relies on several external libraries, most of which are fairly common in C++ software development. Your build environment must have the following requirements and compile-time dependencies satisfied:
-
-* A C++14 compliant compiler (development was done using the [GNU C++ compiler](https://gcc.gnu.org/))
-* [CMake](https://cmake.org/)
-* [Boost](https://www.boost.org/)
-* [Intel(R) Threading Building Blocks (TBB)](https://www.threadingbuildingblocks.org/)
-
-You may need to set the [`CMAKE_MODULE_PATH`](https://cmake.org/cmake/help/latest/variable/CMAKE_MODULE_PATH.html) environment variable in order for CMake to find all relevant packages.
-
-
+You can then use plot.r with these three output files to draw a plot of the results. For now, user has to provide linkage disequilibrium distance `ld_dist` and genome length `genome_length`. The calculation for the two outlier thresholds `outlier_threshold` and `extreme_outlier_threshold` will be added soon.
