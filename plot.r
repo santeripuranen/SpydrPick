@@ -45,7 +45,7 @@ read_binary_file <- function(file_path, n_edges_read, data_type) {
 # Read edges from file and calculate edge distances. 
 read_binary_edges_and_calculate_distances <- function(file_path, n_edges_read, data_type, genome_length) {
     edges <- read_binary_file(file_path, n_edges_read * 2, data_type)
-    edge_distances <- abs(edges[seq(1, n_edges_read, 2)] - edges[seq(2, n_edges_read, 2)])
+    edge_distances <- abs(edges[seq(1, n_edges_read * 2, 2)] - edges[seq(2, n_edges_read * 2, 2)])
     edge_distances <- pmin(genome_length - edge_distances, edge_distances)
     return(edge_distances)
 }
