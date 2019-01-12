@@ -47,8 +47,8 @@ public:
 		m_r(0),
 		m_n_loci(alignments.front()->n_loci()),
 		m_n_loci_per_block(apegrunt::StateBlock_size),
-		m_last_block_size(apegrunt::get_last_block_size(m_n_loci-1)),
-		m_last_block_index(apegrunt::get_last_block_index(m_n_loci-1))
+		m_last_block_size(apegrunt::get_last_block_size(m_n_loci)),
+		m_last_block_index(apegrunt::get_last_block_index(m_n_loci))
 	{
 		m_weights = std::make_shared< weights_t >();
 		auto& weights = *m_weights.get();

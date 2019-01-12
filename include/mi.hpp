@@ -124,7 +124,7 @@ public:
 		const auto& istatepresence = statepresence_blocks[iblock];
 		const auto& jstatepresence = statepresence_blocks[jblock];
 
-		for( std::size_t icol=icol_begin; icol<icol_end; ++icol )
+		for( std::size_t icol=icol_begin, i=0; icol<icol_end; ++icol, ++i )
 		{
 			//std::cout << "mi: icol=" << icol << " pre-kernel" << std::endl;
 			auto kernel = apegrunt::weighted_coincidence_block<state_t,real_t>( m_alignment, m_weights, 0.0 );
@@ -152,7 +152,7 @@ public:
 
 			//std::cout << "mi: mi_solution icol=" << icol << std::endl;
 			// given the 1-by-iblock_size conditional and joint entropies, calculate MI as H(i,j) - H(i|j) - H(j|i)
-			this->mi( mi_solution, joint_H.data(), icond_H.data(), jcond_H.data(), iblock_size );
+			this->mi( mi_solution+i*iblock_size, joint_H.data(), icond_H.data(), jcond_H.data(), iblock_size );
 		}
     }
 
@@ -272,16 +272,14 @@ public:
 	using real_t = RealT;
 	using state_t = StateT;
 	using mi_parameters_t = MI_Parameters<state_t,real_t>;
-	//namespace acc = boost::accumulators;
 
 	MI_solver( std::vector< apegrunt::Alignment_ptr<state_t> > alignments,
-			//apegrunt::CouplingStorage<real_t,apegrunt::number_of_states<state_t>::N>& storage,
-			apegrunt::Graph_ptr storage,
+			//apegrunt::Graph_ptr storage,
 			real_t mi_threshold,
 			real_t pseudocount=0.5
 	)
 	: m_mi_parameters( alignments, mi_threshold, pseudocount ),
-	  m_storage(storage),
+	  m_storage( apegrunt::make_Graph_ptr<apegrunt::Graph>() ), // empty network; private for each MI_solver instance
 	  m_mi_block_kernel( alignments.front(), m_mi_parameters.get_weights(), mi_threshold, pseudocount ),
 	  m_cputimer( SpydrPick_options::verbose() ? SpydrPick_options::get_out_stream() : nullptr ),
 	  m_solution( apegrunt::StateBlock_size*apegrunt::StateBlock_size, 0 ),
@@ -292,7 +290,8 @@ public:
 
 	MI_solver( MI_solver<real_t,state_t>&& other )
     : m_mi_parameters( other.m_mi_parameters ),
-	  m_storage( other.m_storage ),
+	  m_storage( apegrunt::make_Graph_ptr<apegrunt::Graph>() ), // empty network; private for each MI_solver instance
+	  //m_storage( other.m_storage ),
 	  m_mi_block_kernel( other.m_mi_block_kernel ),
 	  m_cputimer( other.m_cputimer ),
 	  m_solution( other.m_solution.size(), 0 ), // each instance has its own private solution buffer
@@ -305,7 +304,8 @@ public:
 	template< typename TBBSplitT >
 	MI_solver( MI_solver<real_t,state_t>& other, TBBSplitT s )
     : m_mi_parameters( other.m_mi_parameters ),
-	  m_storage( other.m_storage ),
+	  m_storage( apegrunt::make_Graph_ptr<apegrunt::Graph>() ), // empty network; private for each MI_solver instance
+	  //m_storage( other.m_storage ),
 	  m_mi_block_kernel( other.m_mi_block_kernel ),
 	  m_cputimer( other.m_cputimer ),
 	  m_solution( other.m_solution.size(), 0 ), // each instance has its own private solution vector
@@ -313,13 +313,16 @@ public:
 	  //m_loci_slice( other.m_loci_slice )
 	{
 	}
+#endif // #ifndef SPYDRPICK_NO_TBB
 
 	// TBB interface (required by tbb::parallel_reduce Body)
 	void join( MI_solver<real_t,state_t>& rhs )
 	{
+		m_storage->join( *(rhs.m_storage) );
 		// m_mi_distribution.join( rhs.m_mi_distribution ); // accumulator joining not implemented yet
 	}
-#endif // #ifndef SPYDRPICK_NO_TBB
+
+	inline apegrunt::Graph_ptr get_graph() const { return m_storage; }
 
 	template< typename RangeT >
     inline void operator()( const RangeT& block_index_range )
@@ -327,12 +330,12 @@ public:
 
 		const std::size_t n_loci = m_mi_parameters.get_alignment()->n_loci(); // cache the number of loci
 
+		auto& storage = *m_storage;
+		std::size_t delta = storage.size();
+
 		for( const auto iblock: block_index_range )
 		{
 			const auto iblock_size = iblock == m_mi_parameters.get_last_block_index() ? m_mi_parameters.get_last_block_size() : m_mi_parameters.get_n_loci_per_block();
-			const auto r_begin = iblock*m_mi_parameters.get_n_loci_per_block();
-			const auto r_end = r_begin + iblock_size;
-			//std::cout << "MI_solver: iblock=" << iblock << " r_begin=" << r_begin << " r_end=" << r_end << std::endl;
 
 			m_cputimer.start();
 			// reset local solution buffer
@@ -341,17 +344,16 @@ public:
 			const auto threshold = m_mi_parameters.threshold();
 
 			// symmetric matrix; compute upper triangular block matrices
-			for( std::size_t jblock = iblock; jblock < apegrunt::get_last_block_index(n_loci-1)+1; ++jblock )
+			for( std::size_t jblock = iblock; jblock < apegrunt::get_number_of_blocks(n_loci); ++jblock )
 			{
 				// calculate mutual information for all iblock versus jblock data columns
-				//m_mi_block_kernel( m_solution.data()+jblock*apegrunt::StateBlock_size, iblock, jblock );
-				//std::cout << "mi: calculate iblock=" << iblock << " jblock=" << jblock << std::endl;
-				m_mi_block_kernel( m_solution.data(), iblock, jblock );
+				m_mi_block_kernel( m_solution.data(), iblock, jblock ); // calculate MI values in 16-by-16 blocks
 				const auto jblock_size = jblock == m_mi_parameters.get_last_block_index() ? m_mi_parameters.get_last_block_size() : m_mi_parameters.get_n_loci_per_block();
-				//std::cout << "mi: store iblock=" << iblock << " jblock=" << jblock << std::endl;
-				//std::cout << "mi: jblock=" << jblock << " acquire lock.."; std::cout.flush();
-				const auto&& scoped_lock = m_storage->lock();
-				//std::cout << " done" << std::endl;
+
+				// lock shared storage for thread safety
+				const auto&& scoped_lock = m_storage->lock(); // lock will expire once out of scope
+
+				// store solutions
 				if( iblock == jblock ) // blocks on the diagonal
 				{
 					for( std::size_t i = 0; i < iblock_size; ++i )
@@ -359,11 +361,11 @@ public:
 						for( std::size_t j = i+1; j < jblock_size; ++j ) // j = i would be on the diagonal, hence j = i+1
 						{
 							const auto mi = *(m_solution.data()+iblock_size*i+j);
-							m_mi_distribution(mi);
+							//m_mi_distribution(mi);
 							// Store all solutions that exceed threshold
 							if( threshold < mi )
 							{
-								m_storage->add( iblock*apegrunt::StateBlock_size+i, jblock*apegrunt::StateBlock_size+j, mi );
+								storage.add( iblock*apegrunt::StateBlock_size+i, jblock*apegrunt::StateBlock_size+j, mi );
 							}
 						}
 					}
@@ -375,25 +377,29 @@ public:
 						for( std::size_t j = 0; j < jblock_size; ++j )
 						{
 							const auto mi = *(m_solution.data()+iblock_size*i+j);
-							m_mi_distribution(mi);
+							//m_mi_distribution(mi);
 							// Store all solutions that exceed threshold
 							if( threshold < mi )
 							{
-								m_storage->add( iblock*apegrunt::StateBlock_size+i, jblock*apegrunt::StateBlock_size+j, mi );
+								storage.add( iblock*apegrunt::StateBlock_size+i, jblock*apegrunt::StateBlock_size+j, mi );
 							}
 						}
 					}
 				}
 			}
 
+			delta = storage.size() - delta;
+
 			m_cputimer.stop();
 
 			if( SpydrPick_options::verbose() )
 			{
+				const auto col_begin = 1+iblock*m_mi_parameters.get_n_loci_per_block();
+				const auto col_end = col_begin + iblock_size;
 				// buffer output in a ss before committing it to the ostream,
 				// in order to keep output clean when run in multi-threaded mode.
 				std::ostringstream oss;
-				oss << "  " << r_begin+1 << "-" << r_end << " / " << n_loci << " total=" << m_cputimer << "\n";
+				oss << "  " << col_begin << "-" << col_end << " / " << n_loci << " delta=" << delta << " total=" << m_cputimer << "\n";
 				*SpydrPick_options::get_out_stream() << oss.str();
 			}
 		}
@@ -401,87 +407,23 @@ public:
 
 private:
 	mi_parameters_t m_mi_parameters;
-	//std::vector< apegrunt::Alignment_ptr<state_t> > m_alignments;
-
-	//apegrunt::CouplingStorage<real_t,apegrunt::number_of_states<state_t>::N>& m_Jij_storage;
 	apegrunt::Graph_ptr m_storage;
-
 	mutual_information_block_kernel<state_t, real_t> m_mi_block_kernel;
-
 	stopwatch::stopwatch m_cputimer; // for timing statistics
 
 	using allocator_t = apegrunt::memory::AlignedAllocator<real_t>;
 	std::vector<real_t,allocator_t> m_solution;
 
 	acc::accumulator_set<real_t, acc::stats<acc::tag::std(acc::from_distribution),acc::tag::distribution_bincount> > m_mi_distribution;
-
-	//const std::size_t m_loci_slice;
-
 };
 
 template< typename RealT, typename StateT >
 MI_solver<RealT,StateT> get_MI_solver(
 	std::vector< apegrunt::Alignment_ptr<StateT> > alignments,
-	apegrunt::Graph_ptr storage,
+	//apegrunt::Graph_ptr storage,
 	RealT mi_threshold,
 	RealT pseudocount
-) { return MI_solver<RealT,StateT>( alignments, storage, mi_threshold, pseudocount ); }
-
-/*
-template< typename StateT, typename RealT=double >
-void mutual_information( apegrunt::Alignment_ptr<StateT> alignment, RealT *mi_solution, RealT mi_threshold, RealT pseudocount=0.5 )
-{
-	using real_t = RealT;
-	using state_t = StateT;
-	enum { N=apegrunt::number_of_states<state_t>::value };
-	using AccessOrder = apegrunt::MATRICES_AccessOrder_tag<N>;
-	enum { BlockSize=apegrunt::StateBlock_size };
-
-	const std::size_t n_loci = alignment->n_loci(); // number of columns in the alignment
-    const std::size_t n_loci_per_block = BlockSize;
-    const std::size_t last_block_size = apegrunt::get_last_block_size(n_loci);
-    const std::size_t n_blocks = apegrunt::get_number_of_blocks(n_loci);
-
-    std::vector<real_t> coincidence_matrix_buffer( N*N*n_loci_per_block );
-
-    for( std::size_t locus=0; locus<n_loci; ++locus )
-    {
-    	for( std::size_t nblock=0; nblock < n_blocks; ++nblock )
-    	{
-    		//std::cout << "  mi: locus=" << locus << " nblock=" << nblock << std::endl;
-    		auto kernel = apegrunt::weighted_coincidence_block<state_t,real_t>( alignment, locus, nblock );
-    		kernel( coincidence_matrix_buffer.data(), pseudocount );
-    	}
-    }
-}
-*/
-/*
-template< typename RealT, typename StateT >
-class MI_block_solver
-{
-public:
-	using real_t = RealT;
-	using state_t = StateT;
-
-	MI_block_solver( apegrunt::Alignment_ptr<state_t> alignment, real_t *mi_solution, real_t mi_threshold, real_t pseudocount=0.5 )
-	{
-
-	}
-
-    inline void operator()( std::size_t block_index )
-    {
-
-    }
-
-private:
-	enum { N=apegrunt::number_of_states<state_t>::value };
-	using AccessOrder = apegrunt::MATRICES_AccessOrder_tag<N>;
-	enum { BlockSize=apegrunt::StateBlock_size };
-
-	RealT *m_mi_solution;
-
-};
-*/
+) { return MI_solver<RealT,StateT>( alignments, /*storage,*/ mi_threshold, pseudocount ); }
 
 } // namespace spydrpick
 
