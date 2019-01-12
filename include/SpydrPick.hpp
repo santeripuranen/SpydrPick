@@ -96,35 +96,29 @@ bool run_SpydrPick( std::vector< apegrunt::Alignment_ptr<StateT> >& alignments /
     {
 		cputimer.start();
 
-		auto network = apegrunt::make_Graph_ptr<apegrunt::Graph>(); // empty network, will store the output
-
-		if( SpydrPick_options::verbose() )
-		{
-			*SpydrPick_options::get_out_stream() << "SpydrPick: storage pool capacity is " << network->capacity() << " units\n";
-		}
-		cputimer.stop();
-		if( SpydrPick_options::verbose() ) { cputimer.print_timing_stats(); *SpydrPick_options::get_out_stream() << "\n"; }
-
 		// Evaluate pair-wise scores
 		cputimer.start();
 
 		if( SpydrPick_options::verbose() )
 		{
+			*SpydrPick_options::get_out_stream() << "SpydrPick: data matrix effective_size = " << alignments.front()->effective_size() << "\n";
 			*SpydrPick_options::get_out_stream() << "SpydrPick: get MI solver\n"; SpydrPick_options::get_out_stream()->flush();
 		}
 
 		// The scoring stage -- this is where the magic happens
-		auto spydrpick_ftor = get_MI_solver( alignments, network, SpydrPick_options::get_mi_threshold(), SpydrPick_options::get_mi_pseudocount() );
+		auto mi_solver = get_MI_solver( alignments, SpydrPick_options::get_mi_threshold(), SpydrPick_options::get_mi_pseudocount() );
 		if( SpydrPick_options::verbose() )
 		{
 			*SpydrPick_options::get_out_stream() << "SpydrPick: evaluate MI\n"; SpydrPick_options::get_out_stream()->flush();
 		}
 	#ifndef SPYDRPICK_NO_TBB
-		tbb::parallel_reduce( tbb::blocked_range<decltype(block_range.begin())>( block_range.begin(), block_range.end(), 1 ), spydrpick_ftor );
+		tbb::parallel_reduce( tbb::blocked_range<decltype(block_range.begin())>( block_range.begin(), block_range.end(), 1 ), mi_solver );
 	#else
 		spydrpick_ftor( block_range );
 	#endif // #ifndef SPYDRPICK_NO_TBB
 		cputimer.stop(); cputimer.print_timing_stats();
+
+		auto network = mi_solver.get_graph();
 
 		if( SpydrPick_options::verbose() )
 		{
