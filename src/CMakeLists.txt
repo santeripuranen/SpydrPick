@@ -33,7 +33,7 @@ set( ARACNE_SOURCES
 set( CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin )
 
 # general optimization flags	
-set( SPYDRPICK_GCC_OPTIMIZATION_FLAGS "${SPYDRPICK_GCC_OPTIMIZATION_FLAGS} -O3 -mavx -fabi-version=6" )
+set( SPYDRPICK_GCC_OPTIMIZATION_FLAGS "${SPYDRPICK_GCC_OPTIMIZATION_FLAGS} -O3 -mavx -fabi-version=6 -static-libstdc++" )
 set( SPYDRPICK_GCC_OPTIMIZATION_FLAGS "${SPYDRPICK_GCC_OPTIMIZATION_FLAGS} -ftree-vectorize -fwhole-program" )
 set( SPYDRPICK_GCC_OPTIMIZATION_FLAGS "${SPYDRPICK_GCC_OPTIMIZATION_FLAGS} -flto -ffat-lto-objects" ) # -flto-report" )
 
