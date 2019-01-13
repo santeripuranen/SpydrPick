@@ -20,7 +20,7 @@ Run `make` in the main directory to compile the prototype binaries.
 
 ## Running SpydrPick
 
-Here are simple running instructions for the prototype version. You need a row-major binary data file that contains 32 bit integers, a binary weights file that contains doubles and a binary loci file that contains 32 bit integers.
+Here are simple running instructions for the prototype version. You need a column-major binary data file that contains 32 bit integers, a binary weights file that contains doubles and a binary loci file that contains 32 bit integers.
 
 First, run
 ```
