@@ -22,12 +22,9 @@
 #include <algorithm>
 #include <cstdint>
 #include <chrono>
-#include <cmath>
 #include <fstream>
 #include <iostream>
 #include <map>
-#include <numeric>
-#include <random>
 #include <set>
 #include <string>
 #include <thread>
@@ -255,7 +252,6 @@ char* get_argument(char** begin, char** end, const std::string& opt, const std::
  * [-p, --threshold-pairs
  * [-t, --threads]
  * [-b, --block-size]
- * [-d, --debug]
  * [-v, --verbose
  * [-h, --help]
 */
@@ -267,7 +263,7 @@ int main(int argc, char** argv) {
     }
     char** argv_end = argv + argc;
     if (std::find(argv, argv_end, std::string("-h")) != argv_end || std::find(argv, argv_end, std::string("--help")) != argv_end) {
-        std::printf("mi_gwes - description goes here\n%-40s %-30s\n%-40s %-30s\n%-40s %-30s\n%-40s %-30s\n%-40s %-30s\n%-40s %-30s\n%-40s %-30s\n%-40s %-30s\n%-40s %-30s\n%-40s %-30s\n%-40s %-30s\n%-40s %-30s\n%-40s %-30s\n%-40s %-30s\n",
+        std::printf("mi_gwes - description goes here\n%-40s %-30s\n%-40s %-30s\n%-40s %-30s\n%-40s %-30s\n%-40s %-30s\n%-40s %-30s\n%-40s %-30s\n%-40s %-30s\n%-40s %-30s\n%-40s %-30s\n%-40s %-30s\n%-40s %-30s\n%-40s %-30s\n",
                 "  -f [ --data-file ] ARG", "Path to file containing data.",
                 "  -l [ --loci-file ] ARG", "Path to file containing loci identifiers.",
                 "  -w [ --weights-file ] ARG", "Path to file containing weights.",
@@ -279,7 +275,6 @@ int main(int argc, char** argv) {
                 " (-p [ --threshold-pairs ] ARG)", "Number of sampled pairs for estimating saving threshold.",
                 " (-t [ --threads ] ARG)", "Number of threads (=1).",
                 " (-b [ --block-size ] ARG)", "Block size for MI calculations (=512).",
-                " (-d [ --debug ]", "Print debug information.",
                 " (-v [ --verbose ]", "Be verbose.",
                 " (-h [ --help ])", "Print this list.");
         return 0;
@@ -317,7 +312,6 @@ int main(int argc, char** argv) {
     arg_reader = get_argument(argv, argv_end, "-b", "--block-size");
     uint32_t block_size = (arg_reader ? std::stoi(arg_reader) : 512);
 
-    uint32_t debug = (std::find(argv, argv_end, std::string("-d")) != argv_end || std::find(argv, argv_end, std::string("--debug")) != argv_end ? 1 : 0);
     uint32_t verbose= (std::find(argv, argv_end, std::string("-v")) != argv_end || std::find(argv, argv_end, std::string("--verbose")) != argv_end ? 1 : 0);
 
     // Main program start
@@ -327,7 +321,7 @@ int main(int argc, char** argv) {
     std::ifstream(loci_file, std::ios::in | std::ios::binary).read((char*) loci.data(), d * sizeof(uint32_t));
     std::vector<double> weights(n);
     std::ifstream(weights_file, std::ios::in | std::ios::binary).read((char*) weights.data(), n * sizeof(double));
-    if (debug) std::printf("(Debug) sum(weights)=%f\n", std::accumulate(weights.begin(), weights.end(), 0.0));
+    if (verbose) std::printf("Using efficient sample size %f\n", std::accumulate(weights.begin(), weights.end(), 0.0));
     std::vector<uint32_t> p_indices;
     // Read data file.
     std::vector<uint32_t> dummy_data = compute_dummy_data(data_file, p_indices, n, d);
