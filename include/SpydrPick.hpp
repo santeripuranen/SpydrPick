@@ -51,8 +51,8 @@
 
 namespace spydrpick {
 
-template< typename StateT >
-apegrunt::Graph_ptr get_MI_network( std::vector< apegrunt::Alignment_ptr<StateT> >& alignments )
+template< typename RealT, typename StateT >
+apegrunt::Graph_ptr get_MI_network( std::vector< apegrunt::Alignment_ptr<StateT> >& alignments, RealT mi_threshold=0.0 )
 {
 	using state_t = StateT;
 	using apegrunt::cbegin; using apegrunt::cend;
@@ -61,7 +61,7 @@ apegrunt::Graph_ptr get_MI_network( std::vector< apegrunt::Alignment_ptr<StateT>
 	auto block_indices = alignments.front()->get_block_indices();
 	auto block_range = boost::make_iterator_range( cbegin(block_indices), cend(block_indices) );
 
-	auto mi_solver = get_MI_solver( alignments, SpydrPick_options::get_mi_threshold(), SpydrPick_options::get_mi_pseudocount() );
+	auto mi_solver = get_MI_solver( alignments, mi_threshold, SpydrPick_options::get_mi_pseudocount() );
 	#ifndef SPYDRPICK_NO_TBB
 	tbb::parallel_reduce( tbb::blocked_range<decltype(block_range.begin())>( block_range.begin(), block_range.end(), 1 ), mi_solver );
 	#else
@@ -72,7 +72,7 @@ apegrunt::Graph_ptr get_MI_network( std::vector< apegrunt::Alignment_ptr<StateT>
 }
 
 template< typename RealT, typename StateT >
-RealT determine_MI_threshold( apegrunt::Alignment_ptr<StateT> alignment )
+RealT determine_MI_threshold( apegrunt::Alignment_ptr<StateT> alignment, std::size_t nvalues )
 {
 	using default_state_t = apegrunt::nucleic_acid_state_t;
 	using alignment_default_storage_t = apegrunt::Alignment_impl_block_compressed_storage< apegrunt::StateVector_impl_block_compressed_alignment_storage<default_state_t> >;

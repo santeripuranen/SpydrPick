@@ -243,13 +243,13 @@ int main(int argc, char **argv)
 		apegrunt::cache_sample_weights( alignment );
 
 		// automatically determine MI threshold
-/*
-		if()
-		{
-			auto mi_threshold = determine_MI_threshold<double>( alignment );
 
+		if( SpydrPick_options::get_mi_threshold() < 0 )
+		{
+			auto mi_threshold = determine_MI_threshold<double>( alignment, SpydrPick_options::get_mi_values() != 0 ? SpydrPick_options::get_mi_values() : 100*alignment->size() );
+			SpydrPick_options::set_mi_threshold( mi_threshold );
 		}
-*/
+
 		// get state frequency profile and output to file
 		apegrunt::output_state_frequencies( alignments.back() );
 
@@ -271,7 +271,7 @@ int main(int argc, char **argv)
 		*SpydrPick_options::get_out_stream() << "SpydrPick: evaluate MI\n"; SpydrPick_options::get_out_stream()->flush();
 	}
 
-	auto network = spydrpick::get_MI_network( alignments /*, loci_list */ );
+	auto network = spydrpick::get_MI_network( alignments, SpydrPick_options::get_mi_threshold() /*, loci_list */ );
 
 	steptimer.stop();
 	if( SpydrPick_options::verbose() )
