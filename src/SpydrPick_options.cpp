@@ -66,12 +66,12 @@ const std::string SpydrPick_options::s_version_string(
 );
 
 const std::string SpydrPick_options::s_copyright_notice(
-	std::string("Copyright (c) 2017-2018 Santeri Puranen\nLicensed under the GNU Affero General Public License version 3.\n\n")
+	std::string("Copyright (c) 2018-2019 Santeri Puranen\nLicensed under the GNU Affero General Public License version 3.\n\n")
 	+ "THIS SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND."
 );
 
 const std::string SpydrPick_options::s_long_copyright_notice(
-	std::string("Copyright (c) 2017-2018 Santeri Puranen\nLicensed under the GNU Affero General Public License version 3.\n\n")
+	std::string("Copyright (c) 2018-2019 Santeri Puranen\nLicensed under the GNU Affero General Public License version 3.\n\n")
 	+ "This program is free software: you can redistribute it and/or modify\n"
     + "it under the terms of the GNU Affero General Public License as\n"
     + "published by the Free Software Foundation, either version 3 of the\n"
