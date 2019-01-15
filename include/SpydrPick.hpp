@@ -40,10 +40,8 @@
 #include "apegrunt/Alignment.h"
 #include "apegrunt/StateVector_utility.hpp"
 #include "apegrunt/Alignment_utility.hpp"
-#include "apegrunt/Alignment_StateVector_weights.hpp"
 #include "apegrunt/Loci.h"
 
-#include "misc/Stopwatch.hpp" // apegrunt
 #include "misc/Matrix_math.hpp" // apegrunt
 
 #include "graph/Graph.hpp" // apegrunt
@@ -53,117 +51,36 @@
 
 namespace spydrpick {
 
-template< typename RealT, typename StateT >
-bool run_SpydrPick( std::vector< apegrunt::Alignment_ptr<StateT> >& alignments /*, apegrunt::Loci_ptr loci_list*/ )
+template< typename StateT >
+apegrunt::Graph_ptr get_MI_network( std::vector< apegrunt::Alignment_ptr<StateT> >& alignments )
 {
-	using real_t = RealT;
 	using state_t = StateT;
 	using apegrunt::cbegin; using apegrunt::cend;
 
-	if( alignments.size() == 0 )
-	{
-		*SpydrPick_options::get_err_stream() << "spydrpick error: no input alignment(s)\n";
-		return false;
-	}
-
-	stopwatch::stopwatch cputimer( SpydrPick_options::verbose() ? SpydrPick_options::get_out_stream() : nullptr ); // for timing statistics
-	stopwatch::stopwatch spydrpick_timer( SpydrPick_options::verbose() ? SpydrPick_options::get_out_stream() : nullptr ); // for timing statistics
-	spydrpick_timer.start();
-
-	if( SpydrPick_options::verbose() )
-	{
-		for( auto alignment: alignments )
-		{
-			*SpydrPick_options::get_out_stream() << "SpydrPick: input alignment \"" << alignment->id_string() << "\" has " << alignment->size() << " sequences and " << alignment->n_loci() << " loci\n";
-		}
-		*SpydrPick_options::get_out_stream() << std::endl;
-	}
-
 	const auto n_loci = alignments.front()->n_loci();
-
-	if( 0 == n_loci )
-	{
-		if( SpydrPick_options::verbose() )
-		{
-			*SpydrPick_options::get_out_stream() << "SpydrPick: there are no loci to analyze (need at least 2)\n";
-		}
-		return false;
-	}
-
 	auto block_indices = alignments.front()->get_block_indices();
 	auto block_range = boost::make_iterator_range( cbegin(block_indices), cend(block_indices) );
 
-    {
-		cputimer.start();
-
-		// Evaluate pair-wise scores
-		cputimer.start();
-
-		if( SpydrPick_options::verbose() )
-		{
-			*SpydrPick_options::get_out_stream() << "SpydrPick: data matrix effective_size = " << alignments.front()->effective_size() << "\n";
-			*SpydrPick_options::get_out_stream() << "SpydrPick: get MI solver\n"; SpydrPick_options::get_out_stream()->flush();
-		}
-
-		// The scoring stage -- this is where the magic happens
-		auto mi_solver = get_MI_solver( alignments, SpydrPick_options::get_mi_threshold(), SpydrPick_options::get_mi_pseudocount() );
-		if( SpydrPick_options::verbose() )
-		{
-			*SpydrPick_options::get_out_stream() << "SpydrPick: evaluate MI\n"; SpydrPick_options::get_out_stream()->flush();
-		}
+	auto mi_solver = get_MI_solver( alignments, SpydrPick_options::get_mi_threshold(), SpydrPick_options::get_mi_pseudocount() );
 	#ifndef SPYDRPICK_NO_TBB
-		tbb::parallel_reduce( tbb::blocked_range<decltype(block_range.begin())>( block_range.begin(), block_range.end(), 1 ), mi_solver );
+	tbb::parallel_reduce( tbb::blocked_range<decltype(block_range.begin())>( block_range.begin(), block_range.end(), 1 ), mi_solver );
 	#else
-		spydrpick_ftor( block_range );
+	spydrpick_ftor( block_range );
 	#endif // #ifndef SPYDRPICK_NO_TBB
-		cputimer.stop(); cputimer.print_timing_stats();
 
-		auto network = mi_solver.get_graph();
+	return mi_solver.get_graph();
+}
 
-		if( SpydrPick_options::verbose() )
-		{
-			*SpydrPick_options::get_out_stream() << "SpydrPick: network contains " << network->size() << " edges\n"; SpydrPick_options::get_out_stream()->flush();
-		}
-
-		if( SpydrPick_options::verbose() )
-		{
-			*SpydrPick_options::get_out_stream() << "SpydrPick: sort edges\n"; SpydrPick_options::get_out_stream()->flush();
-		}
-		cputimer.start();
-		network->sort();
-		cputimer.stop(); cputimer.print_timing_stats();
-
-		// output final coupling scores
-		std::ostringstream extension;
-		extension << apegrunt::Apegrunt_options::get_output_indexing_base() << "-based"; // indicate base index
-
-		{
-			// Ensure that we always get a unique output filename
-			auto couplings_file = apegrunt::get_unique_ofstream( alignments.front()->id_string()+"."+apegrunt::size_string(alignments.front())+(alignments.size() > 1 ? ".scan" : "")+".spydrpick_couplings."+extension.str()+".all" );
-
-			if( couplings_file->stream()->is_open() && couplings_file->stream()->good() )
-			{
-				if( SpydrPick_options::verbose() )
-				{
-					*SpydrPick_options::get_out_stream() << "\nSpydrPick: writing coupling values (" << network->size() << ") to file \"" << couplings_file->name() << "\"\n";
-				}
-				cputimer.start();
-
-				// produce output
-				*(couplings_file->stream()) << apegrunt::Graph_output_formatter<state_t>(network,alignments.front());
-
-				cputimer.stop(); cputimer.print_timing_stats();
-			}
-		}
-    }
-
-	if( SpydrPick_options::verbose() )
-	{
-		*SpydrPick_options::get_out_stream() << "\nSpydrPick: analysis completed\n";
-	}
-	spydrpick_timer.stop(); spydrpick_timer.print_timing_stats();
-
-	return true;
+template< typename RealT, typename StateT >
+RealT determine_MI_threshold( apegrunt::Alignment_ptr<StateT> alignment )
+{
+	using default_state_t = apegrunt::nucleic_acid_state_t;
+	using alignment_default_storage_t = apegrunt::Alignment_impl_block_compressed_storage< apegrunt::StateVector_impl_block_compressed_alignment_storage<default_state_t> >;
+/*
+	auto include_list = apegrunt::make_Loci_list( );
+	auto new_alignment = apegrunt::Alignment_factory< alignment_default_storage_t >().include( alignment, include_list );
+*/
+	return 0.11;
 }
 
 } // namespace spydrpick

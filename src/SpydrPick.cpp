@@ -239,9 +239,17 @@ int main(int argc, char **argv)
 			if( SpydrPick_options::verbose() ) { cputimer.print_timing_stats(); }
  		}
 
-		// parse from file or calculate sample weights
-		apegrunt::cache_sample_weights( alignments.back() );
+		// assign sample weights (parse from file or determine automatically)
+		apegrunt::cache_sample_weights( alignment );
 
+		// automatically determine MI threshold
+/*
+		if()
+		{
+			auto mi_threshold = determine_MI_threshold<double>( alignment );
+
+		}
+*/
 		// get state frequency profile and output to file
 		apegrunt::output_state_frequencies( alignments.back() );
 
@@ -250,34 +258,73 @@ int main(int argc, char **argv)
 
 	}
 
-	//auto loci_list = apegrunt::get_loci_list();
+	steptimer.stop();
+	if( SpydrPick_options::verbose() )
+	{
+		*SpydrPick_options::get_out_stream() << "SpydrPick: alignment pre-processing completed\n";
+		steptimer.print_timing_stats();	*SpydrPick_options::get_out_stream() << "\n";
+	}
+
+	steptimer.start();
+	if( SpydrPick_options::verbose() )
+	{
+		*SpydrPick_options::get_out_stream() << "SpydrPick: evaluate MI\n"; SpydrPick_options::get_out_stream()->flush();
+	}
+
+	auto network = spydrpick::get_MI_network( alignments /*, loci_list */ );
 
 	steptimer.stop();
 	if( SpydrPick_options::verbose() )
 	{
-		*SpydrPick_options::get_out_stream() << "SpydrPick: pre-processing completed\n";
-		steptimer.print_timing_stats();
-		*SpydrPick_options::get_out_stream() << "\n";
+		steptimer.print_timing_stats();	*SpydrPick_options::get_out_stream() << "\n";
 	}
 
+	steptimer.start();
 	if( SpydrPick_options::verbose() )
 	{
-		*SpydrPick_options::get_out_stream() << "SpydrPick: run MI-ARACNE\n" << std::endl;
+		*SpydrPick_options::get_out_stream() << "SpydrPick: sort " << network->size() << " edges\n"; SpydrPick_options::get_out_stream()->flush();
 	}
 
-	// run the inference
-	bool spydrpick_success = spydrpick::run_SpydrPick<double>( alignments /*, loci_list */ );
+	network->sort();
+
+	steptimer.stop();
+	if( SpydrPick_options::verbose() )
+	{
+		steptimer.print_timing_stats();	*SpydrPick_options::get_out_stream() << "\n";
+	}
+
+	/*
+	ARACNE comes here
+	*/
+
+	// output final coupling scores
+	{
+		std::ostringstream extension;
+		extension << apegrunt::Apegrunt_options::get_output_indexing_base() << "-based"; // indicate base index
+
+		// Ensure that we always get a unique output filename
+		auto couplings_file = apegrunt::get_unique_ofstream( alignments.front()->id_string()+"."+apegrunt::size_string(alignments.front())+(alignments.size() > 1 ? ".scan" : "")+".spydrpick_couplings."+extension.str()+".all" );
+
+		if( couplings_file->stream()->is_open() && couplings_file->stream()->good() )
+		{
+			if( SpydrPick_options::verbose() )
+			{
+				*SpydrPick_options::get_out_stream() << "SpydrPick: write network (" << network->size() << " edges) to file \"" << couplings_file->name() << "\"\n";
+			}
+			cputimer.start();
+
+			// produce output
+			*(couplings_file->stream()) << apegrunt::Graph_output_formatter<default_state_t>(network,alignments.front());
+
+			cputimer.stop(); cputimer.print_timing_stats(); *SpydrPick_options::get_out_stream() << "\n";
+		}
+	}
 
 	if( SpydrPick_options::verbose() )
 	{
 		*SpydrPick_options::get_out_stream() << "SpydrPick: analysis completed\n";
+		globaltimer.stop(); globaltimer.print_timing_stats();
 	}
-	globaltimer.stop(); globaltimer.print_timing_stats();
-	if(	!spydrpick_success )
-	{
-		*SpydrPick_options::get_err_stream() << "SpydrPick error: MI failed\n\n";
-		exit(EXIT_FAILURE);
-	}
-// */
-    exit(EXIT_SUCCESS);
+
+	exit(EXIT_SUCCESS);
 }
