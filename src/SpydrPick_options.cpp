@@ -192,7 +192,7 @@ void SpydrPick_options::s_init_verbose( const bool& verbose )
 {
 	if( verbose && s_out )
 	{
-		*s_out << "spydrpick: being verbose.\n";
+		//*s_out << "spydrpick: being verbose.\n";
 	}
 }
 
