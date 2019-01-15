@@ -35,6 +35,7 @@ int SpydrPick_options::s_threads = 1;
 #endif // SPYDRPICK_NO_TBB
 
 double SpydrPick_options::s_mi_threshold = -1.;
+std::size_t SpydrPick_options::s_mi_values = 0;
 double SpydrPick_options::s_mi_pseudocount = 0.5;
 
 std::string SpydrPick_options::s_options_string;
@@ -113,6 +114,8 @@ bool SpydrPick_options::verbose() { return ( s_verbose && s_out ); } // be verbo
 int SpydrPick_options::threads() { return s_threads; }
 
 double SpydrPick_options::get_mi_threshold() { return s_mi_threshold; }
+void SpydrPick_options::set_mi_threshold( double threshold ) { s_mi_threshold = threshold; }
+std::size_t SpydrPick_options::get_mi_values() { return s_mi_values; }
 double SpydrPick_options::get_mi_pseudocount() { return s_mi_pseudocount; }
 
 void SpydrPick_options::m_init()
@@ -124,6 +127,7 @@ void SpydrPick_options::m_init()
 		("version", "Print version information.")
 		("verbose,v", po::bool_switch( &SpydrPick_options::s_verbose )->default_value(SpydrPick_options::s_verbose)->notifier(SpydrPick_options::s_init_verbose), "Be verbose.")
 		("mi-threshold", po::value< double >( &SpydrPick_options::s_mi_threshold )->default_value(SpydrPick_options::s_mi_threshold), "The MI threshold value. Experience suggests that a value of 0.11 is often reasonable. Zero indicates no threshold and negative values will trigger auto-define heuristics.")
+		("mi-values", po::value< std::size_t >( &SpydrPick_options::s_mi_values )->default_value(SpydrPick_options::s_mi_values), "Approximate number of MI values to calculate from data (default=#samples*100).")
 		("mi-pseudocount", po::value< double >( &SpydrPick_options::s_mi_pseudocount )->default_value(SpydrPick_options::s_mi_pseudocount), "The MI pseudocount value.")
 	;
 	m_parallel_options.add_options()
@@ -157,7 +161,7 @@ bool SpydrPick_options::CheckOptions( boost::program_options::variables_map *var
 		}
 		if( !varmap->count("alignmentfile") && s_err )
 		{
-			*s_err << "spydrpick ERROR: No alignment file specified!" << std::endl;
+			*s_err << "SpydrPick ERROR: No alignment file specified!" << std::endl;
 			if( s_out )
 			{
 				*s_out << s_usage_string << std::endl;
@@ -171,7 +175,7 @@ bool SpydrPick_options::CheckOptions( boost::program_options::variables_map *var
 		if( s_err )
 		{
 			// probably an unknown option
-			*s_err << "spydrpick error: " << e.what() << "\n\n";
+			*s_err << "SpydrPick error: " << e.what() << "\n\n";
 			*s_err << s_usage_string << "\n\n";
 		}
 		return false;
@@ -180,7 +184,7 @@ bool SpydrPick_options::CheckOptions( boost::program_options::variables_map *var
 	{
 		if( s_err )
 		{
-			*s_err << "spydrpick error: Exception of unknown type!\n\n";
+			*s_err << "SpydrPick error: Exception of unknown type!\n\n";
 		}
 		return false;
 	}
@@ -201,7 +205,7 @@ void SpydrPick_options::s_init_threads( const int& nthreads )
 {
 	if( s_verbose && s_out )
 	{
-		*s_out << "spydrpick: user requests " << nthreads << " compute threads.\n";
+		*s_out << "SpydrPick: user requests " << nthreads << " compute threads.\n";
 	}
 }
 #endif // SPYDRPICK_NO_TBB

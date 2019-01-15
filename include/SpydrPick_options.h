@@ -62,6 +62,8 @@ public:
 	static int threads();
 
 	static double get_mi_threshold();
+	static void set_mi_threshold( double threshold );
+	static std::size_t get_mi_values();
 	static double get_mi_pseudocount();
 
 private:
@@ -71,6 +73,7 @@ private:
 
 	static int s_threads;
 	static double s_mi_threshold;
+	static std::size_t s_mi_values;
 	static double s_mi_pseudocount;
 
 	static const std::string s_title_string;
