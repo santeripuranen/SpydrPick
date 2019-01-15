@@ -72,7 +72,7 @@ public:
 	  m_mi_threshold(mi_threshold),
 	  m_pseudocount(pseudocount),
 	  m_nloci(alignment->n_loci()),
-	  m_last_block_index( apegrunt::get_last_block_index(m_nloci-1) ),
+	  m_last_block_index( apegrunt::get_last_block_index(m_nloci) ),
 	  m_last_block_size( apegrunt::get_last_block_size(m_nloci) ),
 	  m_nblocks( apegrunt::get_number_of_blocks(m_nloci) ),
 	  m_neff( alignment->effective_size() )
@@ -97,7 +97,6 @@ public:
 	// Calculates the mutual information (MI) for all iblock versus jblock data columns, producing a BlockSize-by-BlockSize dense solution matrix.
 	inline void operator()( RealT *mi_solution, std::size_t iblock, std::size_t jblock )
     {
-		//std::cout << "mi: iblock=" << iblock << " jblock=" << jblock << std::endl;
 		const std::size_t iblock_size = iblock == m_last_block_index ? m_last_block_size : BlockSize;
 		const std::size_t icol_begin = iblock*BlockSize;
 		const std::size_t icol_end = icol_begin+iblock_size;
@@ -106,29 +105,22 @@ public:
 		std::vector<real_t> icond_H(iblock_size, 0.0);
 		std::vector<real_t> jcond_H(iblock_size, 0.0);
 
-		//std::cout << "mi: request statecount_blocks" << std::endl;
-		const auto statecount_blocks_ptr = m_alignment->get_statecount_blocks();
-		//std::cout << "mi: got statecount_blocks_ptr"; std::cout.flush(); std::cout << " (" << bool(statecount_blocks_ptr) << ")"; std::cout.flush();
-		//std::cout << " size=" << statecount_blocks_ptr->size() << std::endl;
+		// get statecount tables
+		const auto statecount_blocks_ptr = m_alignment->get_statecount_blocks(); // keep shared_ptr alive
 		const auto& statecount_blocks = *statecount_blocks_ptr;
-		//std::cout << "mi: got statecount_blocks (size=" << statecount_blocks.size() << ")" << std::endl;
 		const auto& istatecounts = statecount_blocks[iblock];
 		const auto& jstatecounts = statecount_blocks[jblock];
 
-		//std::cout << "mi: request statepresence_blocks" << std::endl;
-		const auto statepresence_blocks_ptr = m_alignment->get_statepresence_blocks();
-		//std::cout << "mi: got statepresence_blocks_ptr"; std::cout.flush(); std::cout << " (" << bool(statepresence_blocks_ptr) << ")"; std::cout.flush();
-		//std::cout << " size=" << statepresence_blocks_ptr->size() << std::endl;
+		// get statepresence tables
+		const auto statepresence_blocks_ptr = m_alignment->get_statepresence_blocks(); // keep shared_ptr alive
 		const auto& statepresence_blocks = *statepresence_blocks_ptr;
-		//std::cout << "mi: got statepresence_blocks (size=" << statepresence_blocks.size() << ")" << std::endl;
 		const auto& istatepresence = statepresence_blocks[iblock];
 		const auto& jstatepresence = statepresence_blocks[jblock];
 
 		for( std::size_t icol=icol_begin, i=0; icol<icol_end; ++icol, ++i )
 		{
-			//std::cout << "mi: icol=" << icol << " pre-kernel" << std::endl;
+			// get the crosstable/coincidence matrix
 			auto kernel = apegrunt::weighted_coincidence_block<state_t,real_t>( m_alignment, m_weights, 0.0 );
-			//std::cout << "mi: icol=" << icol << " post-kernel" << std::endl;
 
 			// the coincidence kernel collects a tall 1-by-iblock_size coincidence matrix (icol versus all columns in jblock).
 			kernel( m_buffer.data(), icol, jblock );
@@ -136,19 +128,19 @@ public:
 			//std::cout << "mi: normalize icol=" << icol << std::endl;
 			// normalize matrices, accounting for pseudocounts
 
-			this->normalize( istatepresence[icol%BlockSize], jstatepresence, istatecounts[icol%BlockSize], jstatecounts, iblock_size );
+			this->normalize_and_get_jointH_icondH( joint_H.data(), icond_H.data(), istatepresence[icol%BlockSize], jstatepresence, istatecounts[icol%BlockSize], jstatecounts, iblock_size );
 
 			//std::cout << "mi: sum_mat icol=" << icol << std::endl;
 			// given the 1-by-iblock_size coincidence matrix, calculate the joint entropy of i and j, H(i,j)
-			this->sum_mat( joint_H.data(), istatepresence[icol%BlockSize], jstatepresence, iblock_size );
+			//this->sum_mat( joint_H.data(), istatepresence[icol%BlockSize], jstatepresence, iblock_size );
 
 			//std::cout << "mi: sum_rows icol=" << icol << std::endl;
 			// given the 1-by-iblock_size coincidence matrix, calculate the conditional entropies H(i|j)
-			this->sum_rows( icond_H.data(), istatepresence[icol%BlockSize], jstatepresence, iblock_size );
+			//this->sum_rows( icond_H.data(), istatepresence[icol%BlockSize], jstatepresence, iblock_size );
 
 			//std::cout << "mi: sum_cols icol=" << icol << std::endl;
 			// given the 1-by-iblock_size coincidence matrix, calculate the conditional entropies H(j|i)
-			this->sum_cols( jcond_H.data(), istatepresence[icol%BlockSize], jstatepresence, iblock_size );
+			this->get_jCondH( jcond_H.data(), istatepresence[icol%BlockSize], jstatepresence, iblock_size );
 
 			//std::cout << "mi: mi_solution icol=" << icol << std::endl;
 			// given the 1-by-iblock_size conditional and joint entropies, calculate MI as H(i,j) - H(i|j) - H(j|i)
@@ -156,29 +148,47 @@ public:
 		}
     }
 
-	inline void normalize( statepresence_t ipresence, statepresence_block_t jpresence_block, statecount_t istatecount, statecount_block_t jstatecount_block, std::size_t extent )
+	inline void normalize_and_get_jointH_icondH( real_t* const jointH, real_t* const icondH, statepresence_t ipresence, const statepresence_block_t& jpresence_block, statecount_t istatecount, const statecount_block_t& jstatecount_block, std::size_t extent )
 	{
 		// As the coincidence matrix is always N-by-N, the following function needs to use masking
 		// in order to add pseudocounts only to elements present in the crosstable/coincidence matrix.
 
 		const apegrunt::Vector<real_t,N> masked_pseudocount( m_pseudocount, ipresence );
-		//std::cout << "mi: mask = " << masked_pseudocount << std::endl;
 		for( std::size_t i=0; i < extent; ++i )
 		{
-			const auto jmask = std::bitset<std::numeric_limits<statepresence_t>::digits>(jpresence_block[i]);
-			const auto normconst = apegrunt::make_Vector<real_t,N>( real_t(istatecount*jstatecount_block[i])*m_pseudocount + m_neff );
+			const auto jmask = jpresence_block[i];
+			//const auto jmask = std::bitset<std::numeric_limits<statepresence_t>::digits>(jpresence_block[i]);
+
+			real_t normconst(0);
+			//const real_t normconst( real_t(istatecount*jstatecount_block[i])*m_pseudocount + m_neff ); // didn't work, normconst != sum(elements); apparently due to coincidence matrix round-off errors
 			for( std::size_t j=0; j < N; ++j )
 			{
-				if( jmask[j] )
+				if( jmask & (1<<j) )
+				//if( jmask[j] )
 				{
-					( apegrunt::make_Vector_view<real_t,N>( m_buffer.data() + AccessOrder::ptr_increment(j,i,extent), 1 ) += masked_pseudocount ) /= normconst;
+					// add pseudocounts and collect row sums
+					normconst += apegrunt::mask_sum( apegrunt::make_Vector_view<real_t,N>( m_buffer.data() + AccessOrder::ptr_increment(j,i,extent), 1 ) += masked_pseudocount, ipresence );
 				}
-				//std::cout << apegrunt::make_Vector_view<real_t,N>( m_buffer.data() + AccessOrder::ptr_increment(j,i,extent), 1 ) << " " << jmask[j] << std::endl;
 			}
+
+			real_t jointHsum(0), icondHsum(0);
+			for( std::size_t j=0; j < N; ++j )
+			{
+				if( jmask & (1<<j) )
+				//if( jmask[j] )
+				{
+					// normalize elements on row j and calculate sum( x * log(x) ) over elements indicated by ipresence mask
+					auto row_view = apegrunt::make_Vector_view<real_t,N>( m_buffer.data() + AccessOrder::ptr_increment(j,i,extent), 1 );
+					jointHsum += apegrunt::mask_sum_xlogx( row_view /= normconst, ipresence );
+					icondHsum += apegrunt::xlogx( apegrunt::sum( row_view ) );
+				}
+			}
+			*(jointH+i) = jointHsum;
+			*(icondH+i) = icondHsum;
 		}
 	}
-
-	inline void sum_mat( real_t* const destination, statepresence_t ipresence, statepresence_block_t jpresence_block, std::size_t extent )
+/*
+	inline void sum_mat( real_t* const destination, statepresence_t ipresence, const statepresence_block_t& jpresence_block, std::size_t extent )
 	{
 		// As the coincidence matrix is always N-by-N, the following function needs to use masking
 		// in order apply log() only to elements present in the crosstable/coincidence matrix
@@ -198,8 +208,9 @@ public:
 			//std::cout << "i=" << i << " sum=" << *(destination+i) << std::endl;
 		}
 	}
-
-	inline void sum_rows( real_t* const destination, statepresence_t ipresence, statepresence_block_t jpresence_block, std::size_t extent )
+*/
+/*
+	inline void sum_rows( real_t* const destination, statepresence_t ipresence, const statepresence_block_t& jpresence_block, std::size_t extent )
 	{
 		// As the coincidence matrix is always N-by-N, the following function needs to use masking
 		// in order apply log() only to elements present in the crosstable/coincidence matrix
@@ -219,25 +230,28 @@ public:
 				}
 			}
 			//std::cout << "i=" << i << " jmask=" << jmask << " rowmask=" << std::bitset<std::numeric_limits<statepresence_t>::digits>(rowmask) << " v=" << row_sums << std::endl;
-			*(destination+i) = apegrunt::sum( apegrunt::mask_xlogx( row_sums, jpresence_block[i] ) );
+			*(destination+i) = apegrunt::mask_sum_xlogx( row_sums, jpresence_block[i] );
 		}
 	}
-
-	inline void sum_cols( real_t* const destination, statepresence_t ipresence, statepresence_block_t jpresence_block, std::size_t extent )
+*/
+	inline void get_jCondH( real_t* const jcondH, statepresence_t ipresence, const statepresence_block_t& jpresence_block, std::size_t extent )
 	{
 		// As the coincidence matrix is always N-by-N, the following function needs to use masking
 		// in order apply log() only to elements present in the crosstable/coincidence matrix
 
+		//const auto jmask = std::bitset<std::numeric_limits<statepresence_t>::digits>(ipresence);
 		for( std::size_t i=0; i < extent; ++i )
 		{
-			//const auto jmask = std::bitset<std::numeric_limits<statepresence_t>::digits>(jpresence_block[i]);
-			apegrunt::Vector<real_t,N> col_sums;
+			real_t jcondHsum(0);
 			for( std::size_t j=0; j < N; ++j )
 			{
-				col_sums[j] = apegrunt::sum( apegrunt::make_Vector_view<real_t,N>( m_buffer.data() + AccessOrder::ptr_increment(0,i,extent)+j, AccessOrder::column_stride(extent) ) );
+				if( ipresence & (1<<j) )
+				//if( jmask[j] )
+				{
+					jcondHsum += apegrunt::xlogx( apegrunt::sum( apegrunt::make_Vector_view<real_t,N>( m_buffer.data() + AccessOrder::ptr_increment(0,i,extent)+j, AccessOrder::column_stride(extent) ) ) );
+				}
 			}
-			//std::cout  << "i=" << i	<< "mask=" << std::bitset<std::numeric_limits<statepresence_t>::digits>(ipresence) << " v=" << col_sums << std::endl;
-			*(destination+i) = apegrunt::sum( apegrunt::mask_xlogx( col_sums, ipresence ) );
+			*(jcondH+i) = jcondHsum;
 		}
 	}
 
@@ -339,20 +353,20 @@ public:
 
 			m_cputimer.start();
 			// reset local solution buffer
-			for( auto& e: m_solution ) { e = 0.0; }
 
 			const auto threshold = m_mi_parameters.threshold();
 
 			// symmetric matrix; compute upper triangular block matrices
 			for( std::size_t jblock = iblock; jblock < apegrunt::get_number_of_blocks(n_loci); ++jblock )
 			{
+				for( auto& e: m_solution ) { e = 0.0; }
 				// calculate mutual information for all iblock versus jblock data columns
 				m_mi_block_kernel( m_solution.data(), iblock, jblock ); // calculate MI values in 16-by-16 blocks
 				const auto jblock_size = jblock == m_mi_parameters.get_last_block_index() ? m_mi_parameters.get_last_block_size() : m_mi_parameters.get_n_loci_per_block();
 
 				// lock shared storage for thread safety
-				const auto&& scoped_lock = m_storage->lock(); // lock will expire once out of scope
-
+				//const auto&& scoped_lock = m_storage->acquire_lock(); // lock will expire once out of scope
+				m_storage->lock();
 				// store solutions
 				if( iblock == jblock ) // blocks on the diagonal
 				{
@@ -386,6 +400,7 @@ public:
 						}
 					}
 				}
+				m_storage->unlock();
 			}
 
 			delta = storage.size() - delta;
@@ -395,11 +410,11 @@ public:
 			if( SpydrPick_options::verbose() )
 			{
 				const auto col_begin = 1+iblock*m_mi_parameters.get_n_loci_per_block();
-				const auto col_end = col_begin + iblock_size;
+				const auto col_end = col_begin + iblock_size - 1;
 				// buffer output in a ss before committing it to the ostream,
 				// in order to keep output clean when run in multi-threaded mode.
 				std::ostringstream oss;
-				oss << "  " << col_begin << "-" << col_end << " / " << n_loci << " delta=" << delta << " total=" << m_cputimer << "\n";
+				oss << "  " << col_begin << "-" << col_end << " / " << n_loci << " (" << delta << " new edges) time=" << m_cputimer << "\n";
 				*SpydrPick_options::get_out_stream() << oss.str();
 			}
 		}
