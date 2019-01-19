@@ -22,6 +22,7 @@
 
 #include <cstdlib>
 #include <iostream>
+#include <iomanip>
 #include <fstream>
 
 #include "boost/program_options.hpp"
@@ -142,10 +143,10 @@ int main(int argc, char **argv)
 	stopwatch::stopwatch cputimer( SpydrPick_options::verbose() ? SpydrPick_options::get_out_stream() : nullptr ); // for timing statistics
 
 	// get alignments
-	auto alignments = apegrunt::get_alignments<default_state_t>( 2 );
+	auto alignments = apegrunt::get_alignments<default_state_t>( 1 );
 
 	// Check if we have the compulsory input alignment
-	if( alignments.empty()) { exit(EXIT_FAILURE); }
+	if( alignments.empty() ) { exit(EXIT_FAILURE); }
 
 // /*
 	stopwatch::stopwatch steptimer( SpydrPick_options::verbose() ? SpydrPick_options::get_out_stream() : nullptr ); // for timing statistics
@@ -178,7 +179,7 @@ int main(int argc, char **argv)
 					*SpydrPick_options::get_out_stream() << "SpydrPick: trim alignment based on include list \"" << include_list->id_string() << "\"\n";
 				}
 				cputimer.start();
-				alignment = apegrunt::Alignment_factory< alignment_default_storage_t >().include( alignments.front(), include_list );
+				alignment = apegrunt::Alignment_factory< alignment_default_storage_t >().include( alignment, include_list );
 				cputimer.stop();
 				if( SpydrPick_options::verbose() ) { cputimer.print_timing_stats(); *SpydrPick_options::get_out_stream() << "\n"; }
 			}
@@ -199,7 +200,7 @@ int main(int argc, char **argv)
 					*SpydrPick_options::get_out_stream() << "SpydrPick: trim alignment based on exclude list \"" << exclude_list->id_string() << "\"\n";
 				}
 				cputimer.start();
-				alignment = apegrunt::Alignment_factory< alignment_default_storage_t >().exclude( alignments.front(), exclude_list );
+				alignment = apegrunt::Alignment_factory< alignment_default_storage_t >().exclude( alignment, exclude_list );
 				cputimer.stop();
 				if( SpydrPick_options::verbose() ) { cputimer.print_timing_stats(); *SpydrPick_options::get_out_stream() << "\n"; }
 			}
@@ -239,22 +240,33 @@ int main(int argc, char **argv)
 			if( SpydrPick_options::verbose() ) { cputimer.print_timing_stats(); }
  		}
 
+		// get state frequency profile and output to file
+		apegrunt::output_state_frequencies( alignment );
+
 		// assign sample weights (parse from file or determine automatically)
 		apegrunt::cache_sample_weights( alignment );
 
 		// automatically determine MI threshold
-
 		if( SpydrPick_options::get_mi_threshold() < 0 )
 		{
-			auto mi_threshold = determine_MI_threshold<double>( alignment, SpydrPick_options::get_mi_values() != 0 ? SpydrPick_options::get_mi_values() : 100*alignment->size() );
+			cputimer.start();
+			if( SpydrPick_options::verbose() )
+			{
+				*SpydrPick_options::get_out_stream() << "SpydrPick: determine MI save threshold (" << SpydrPick_options::get_mi_threshold_pairs() << " pairs * " << SpydrPick_options::get_mi_threshold_iterations() << " iterations)\n";
+			}
+			const std::size_t top_pairs_to_save = SpydrPick_options::get_mi_values() != 0 ? SpydrPick_options::get_mi_values() : 100*alignment->n_loci();
+			const auto mi_threshold = determine_MI_threshold<double>( alignment, top_pairs_to_save );
 			SpydrPick_options::set_mi_threshold( mi_threshold );
+			cputimer.stop()
+			;if( SpydrPick_options::verbose() )
+			{
+				*SpydrPick_options::get_out_stream() << "SpydrPick: MI save threshold = " << std::setprecision(6) << SpydrPick_options::get_mi_threshold() << " (save approx. " << top_pairs_to_save << " top pairs)\n";
+				cputimer.print_timing_stats();	*SpydrPick_options::get_out_stream() << "\n";
+			}
 		}
 
-		// get state frequency profile and output to file
-		apegrunt::output_state_frequencies( alignments.back() );
-
 		// output the sample-sample Hamming distance matrix
-		apegrunt::output_sample_distance_matrix( alignments.back() );
+		apegrunt::output_sample_distance_matrix( alignment );
 
 	}
 

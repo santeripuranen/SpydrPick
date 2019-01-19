@@ -1,6 +1,6 @@
-/** @file spydrpick.hpp
+/** @file SpydrPick.hpp
 
-	Copyright (c) 2017-2018 Santeri Puranen.
+	Copyright (c) 2018-2019 Santeri Puranen, 2019 Juri Kuronen
 
 	This program is free software: you can redistribute it and/or modify
 	it under the terms of the GNU Affero General Public License as
@@ -15,7 +15,7 @@
 	You should have received a copy of the GNU Affero General Public License
 	along with this program. If not, see <http://www.gnu.org/licenses/>.
 
-	@author Santeri Puranen
+	@author Santeri Puranen and Juri Kuronen
 	$Id: $
 */
 #ifndef SPYDRPICK_HPP
@@ -25,6 +25,10 @@
 #include <memory> // for std::shared_ptr and std::make_shared
 #include <vector>
 #include <set>
+#include <random>
+#include <unordered_set>
+
+#include <boost/functional/hash/hash.hpp>
 
 #ifndef SPYDRPICK_NO_TBB // Threading with Threading Building Blocks
 #pragma message("Compiling with TBB support")
@@ -71,16 +75,79 @@ apegrunt::Graph_ptr get_MI_network( std::vector< apegrunt::Alignment_ptr<StateT>
 	return mi_solver.get_graph();
 }
 
-template< typename RealT, typename StateT >
-RealT determine_MI_threshold( apegrunt::Alignment_ptr<StateT> alignment, std::size_t nvalues )
+template< typename NodeT >
+std::unordered_set< std::pair<NodeT,NodeT>, boost::hash< std::pair<NodeT,NodeT> > > sample_pairs( std::size_t threshold_pairs, std::size_t max_range )
 {
-	using default_state_t = apegrunt::nucleic_acid_state_t;
-	using alignment_default_storage_t = apegrunt::Alignment_impl_block_compressed_storage< apegrunt::StateVector_impl_block_compressed_alignment_storage<default_state_t> >;
-/*
-	auto include_list = apegrunt::make_Loci_list( );
-	auto new_alignment = apegrunt::Alignment_factory< alignment_default_storage_t >().include( alignment, include_list );
-*/
-	return 0.11;
+    using pair_t = std::pair<NodeT,NodeT>;
+
+    std::unordered_set< pair_t, boost::hash<pair_t> > pairs_set;
+
+    // Initialize random number generator.
+    std::mt19937 gen(std::chrono::high_resolution_clock::now().time_since_epoch().count());
+    std::uniform_int_distribution<NodeT> dist(0, max_range);
+
+    // Sample unique pairs.
+    while( pairs_set.size() < threshold_pairs )
+    {
+        pair_t pair = std::make_pair(dist(gen), dist(gen));
+
+        while( pair.first == pair.second )
+        {
+            pair = std::make_pair(dist(gen), dist(gen));
+        }
+
+        if( pair.first > pair.second )
+        {
+            std::swap(pair.first, pair.second);
+        }
+
+        pairs_set.insert(pair);
+    }
+
+    return pairs_set;
+}
+
+template< typename RealT, typename StateT >
+RealT determine_MI_threshold( apegrunt::Alignment_ptr<StateT> alignment, std::size_t n_values )
+{
+    using default_state_t = apegrunt::nucleic_acid_state_t;
+    using alignment_default_storage_t = apegrunt::Alignment_impl_block_compressed_storage< apegrunt::StateVector_impl_block_compressed_alignment_storage<default_state_t> >;
+    using node_t = std::size_t;
+
+    const auto n_loci = alignment->n_loci();
+    const std::size_t threshold_iterations = SpydrPick_options::get_mi_threshold_iterations();
+    const std::size_t threshold_pairs = SpydrPick_options::get_mi_threshold_pairs();
+
+    // Calculate threshold estimate index in the empirical CDF.
+    std::size_t possible_pairs = n_loci * (n_loci - 1) / 2;
+    std::size_t threshold_idx = (1.0 - double(n_values) / possible_pairs) * threshold_pairs;
+    std::vector<RealT> thresholds;
+
+    const auto verbose = SpydrPick_options::verbose();
+    SpydrPick_options::set_verbose( false );
+
+    for( std::size_t iter=0; iter<threshold_iterations; ++iter )
+    {
+    	std::vector<RealT> mi_values; mi_values.reserve(threshold_pairs);
+        const auto pairs = sample_pairs<node_t>( threshold_pairs, n_loci - 1 );
+        for( const auto& pair: pairs )
+        {
+			auto mi_solver = get_MI_solver( std::vector< apegrunt::Alignment_ptr<StateT> >{alignment}, 0.0, SpydrPick_options::get_mi_pseudocount() );
+			mi_solver( pair.first, apegrunt::get_block_index( pair.second), false );
+
+			const auto& graph = *mi_solver.get_graph();
+			mi_values.push_back( graph[ pair.second % apegrunt::StateBlock_size ].weight() );
+        }
+        std::nth_element( mi_values.begin(), mi_values.begin() + threshold_idx, mi_values.end() );
+        thresholds.push_back( mi_values[threshold_idx] );
+    }
+
+    SpydrPick_options::set_verbose( verbose );
+
+    std::size_t median_idx = thresholds.size() / 2 - ( thresholds.size() % 2 ? 0 : 1 );
+    auto nth = thresholds.begin() + median_idx;
+    std::nth_element( thresholds.begin(), nth, thresholds.end() );
+    return *nth; //thresholds[median_idx];
 }
 
 } // namespace spydrpick
