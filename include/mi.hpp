@@ -98,6 +98,7 @@ public:
 	inline void operator()( RealT *mi_solution, std::size_t iblock, std::size_t jblock )
     {
 		const std::size_t iblock_size = iblock == m_last_block_index ? m_last_block_size : BlockSize;
+		const std::size_t jblock_size = jblock == m_last_block_index ? m_last_block_size : BlockSize;
 		const std::size_t icol_begin = iblock*BlockSize;
 		const std::size_t icol_end = icol_begin+iblock_size;
 
@@ -128,7 +129,7 @@ public:
 			//std::cout << "mi: normalize icol=" << icol << std::endl;
 			// normalize matrices, accounting for pseudocounts
 
-			this->normalize_and_get_jointH_icondH( joint_H.data(), icond_H.data(), istatepresence[icol%BlockSize], jstatepresence, istatecounts[icol%BlockSize], jstatecounts, iblock_size );
+			this->normalize_and_get_jointH_icondH( joint_H.data(), icond_H.data(), istatepresence[icol%BlockSize], jstatepresence, istatecounts[icol%BlockSize], jstatecounts, jblock_size );
 
 			//std::cout << "mi: sum_mat icol=" << icol << std::endl;
 			// given the 1-by-iblock_size coincidence matrix, calculate the joint entropy of i and j, H(i,j)
@@ -140,12 +141,51 @@ public:
 
 			//std::cout << "mi: sum_cols icol=" << icol << std::endl;
 			// given the 1-by-iblock_size coincidence matrix, calculate the conditional entropies H(j|i)
-			this->get_jCondH( jcond_H.data(), istatepresence[icol%BlockSize], jstatepresence, iblock_size );
+			this->get_jCondH( jcond_H.data(), istatepresence[icol%BlockSize], jstatepresence, jblock_size );
 
 			//std::cout << "mi: mi_solution icol=" << icol << std::endl;
 			// given the 1-by-iblock_size conditional and joint entropies, calculate MI as H(i,j) - H(i|j) - H(j|i)
-			this->mi( mi_solution+i*iblock_size, joint_H.data(), icond_H.data(), jcond_H.data(), iblock_size );
+			this->mi( mi_solution+BlockSize*i, joint_H.data(), icond_H.data(), jcond_H.data(), jblock_size );
+			//this->mi( mi_solution+i*iblock_size, joint_H.data(), icond_H.data(), jcond_H.data(), iblock_size );
 		}
+    }
+
+	inline void single( RealT *mi_solution, std::size_t icol, std::size_t jblock )
+    {
+		const std::size_t iblock = apegrunt::get_block_index(icol);
+		const std::size_t jblock_size = jblock == m_last_block_index ? m_last_block_size : BlockSize;
+		const std::size_t jcol_begin = jblock*BlockSize;
+		const std::size_t jcol_end = jcol_begin+jblock_size;
+
+		std::vector<real_t> joint_H(jblock_size, 0.0);
+		std::vector<real_t> icond_H(jblock_size, 0.0);
+		std::vector<real_t> jcond_H(jblock_size, 0.0);
+
+		// get statecount tables
+		const auto statecount_blocks_ptr = m_alignment->get_statecount_blocks(); // keep shared_ptr alive
+		const auto& statecount_blocks = *statecount_blocks_ptr;
+		const auto& istatecounts = statecount_blocks[iblock];
+		const auto& jstatecounts = statecount_blocks[jblock];
+
+		// get statepresence tables
+		const auto statepresence_blocks_ptr = m_alignment->get_statepresence_blocks(); // keep shared_ptr alive
+		const auto& statepresence_blocks = *statepresence_blocks_ptr;
+		const auto& istatepresence = statepresence_blocks[iblock];
+		const auto& jstatepresence = statepresence_blocks[jblock];
+
+		// get the crosstable/coincidence matrix
+		auto kernel = apegrunt::weighted_coincidence_block<state_t,real_t>( m_alignment, m_weights, 0.0 );
+
+		// the coincidence kernel collects a tall 1-by-iblock_size coincidence matrix (icol versus all columns in jblock).
+		kernel( m_buffer.data(), icol, jblock );
+
+		this->normalize_and_get_jointH_icondH( joint_H.data(), icond_H.data(), istatepresence[icol%BlockSize], jstatepresence, istatecounts[icol%BlockSize], jstatecounts, jblock_size );
+
+		// given the 1-by-iblock_size coincidence matrix, calculate the conditional entropies H(j|i)
+		this->get_jCondH( jcond_H.data(), istatepresence[icol%BlockSize], jstatepresence, jblock_size );
+
+		// given the 1-by-iblock_size conditional and joint entropies, calculate MI as H(i,j) - H(i|j) - H(j|i)
+		this->mi( mi_solution, joint_H.data(), icond_H.data(), jcond_H.data(), jblock_size );
     }
 
 	inline void normalize_and_get_jointH_icondH( real_t* const jointH, real_t* const icondH, statepresence_t ipresence, const statepresence_block_t& jpresence_block, statecount_t istatecount, const statecount_block_t& jstatecount_block, std::size_t extent )
@@ -338,27 +378,98 @@ public:
 
 	inline apegrunt::Graph_ptr get_graph() const { return m_storage; }
 
+	// Calculate MIs for a single position against a block of positions. Self interactions are included.
+	inline void operator()( std::size_t icol, std::size_t jblock, bool exclude_selfinteraction=true )
+	{
+		const std::size_t iblock = apegrunt::get_block_index(icol);
+		const std::size_t n_loci = m_mi_parameters.get_alignment()->n_loci(); // cache the number of loci
+		auto& storage = *m_storage;
+		std::size_t delta = storage.size();
+
+		m_cputimer.start();
+		const auto jblock_size = jblock == m_mi_parameters.get_last_block_index() ? m_mi_parameters.get_last_block_size() : m_mi_parameters.get_n_loci_per_block();
+		const auto threshold = m_mi_parameters.threshold();
+
+		// reset local solution buffer
+		for( auto& e: m_solution ) { e = 0.0; }
+
+		// calculate mutual information for all iblock versus jblock data columns
+		m_mi_block_kernel.single( m_solution.data(), icol, jblock ); // calculate MI values in 1-by-16 blocks
+
+		// lock shared storage for thread safety
+		//const auto&& scoped_lock = m_storage->acquire_lock(); // lock will expire once out of scope
+		storage.lock();
+		// store solutions
+		if( iblock == jblock && exclude_selfinteraction )
+		{
+			const std::size_t exclude = icol%apegrunt::StateBlock_size;
+			for( std::size_t i = 0; i < jblock_size; ++i )
+			{
+				if( i != exclude )
+				{
+					const auto mi = *(m_solution.data()+i);
+					//std::cout << " " << mi;
+					// Store all solutions that exceed threshold
+					if( threshold < mi )
+					{
+						storage.add( icol, jblock*apegrunt::StateBlock_size+i, mi );
+					}
+				}
+			}
+		}
+		else
+		{
+			for( std::size_t i = 0; i < jblock_size; ++i )
+			{
+				const auto mi = *(m_solution.data()+i);
+				// Store all solutions that exceed threshold
+				//std::cout << " " << mi;
+				if( threshold < mi )
+				{
+					storage.add( icol, jblock*apegrunt::StateBlock_size+i, mi );
+				}
+			}
+		}
+		storage.unlock();
+
+		delta = storage.size() - delta;
+		//std::cout << " delta=" << delta << "\n" << std::endl;
+
+		m_cputimer.stop();
+
+		if( SpydrPick_options::verbose() )
+		{
+			const auto col_begin = 1+jblock*m_mi_parameters.get_n_loci_per_block();
+			const auto col_end = col_begin + jblock_size - 1;
+			// buffer output in a ss before committing it to the ostream,
+			// in order to keep output clean when run in multi-threaded mode.
+			std::ostringstream oss;
+			oss << "  " << icol << " x " << col_begin << "-" << col_end << " / " << n_loci << " (" << delta << " new edges) time=" << m_cputimer << "\n";
+			*SpydrPick_options::get_out_stream() << oss.str();
+		}
+	}
+
+	// Calculate MIs for a range of blocks against all other blocks in an upper triangular matrix. Self interactions are excluded.
 	template< typename RangeT >
     inline void operator()( const RangeT& block_index_range )
     {
-
 		const std::size_t n_loci = m_mi_parameters.get_alignment()->n_loci(); // cache the number of loci
+		const auto& index_translation = *(m_mi_parameters.get_alignment()->get_loci_translation());
+		//const auto ld_threshold = m_mi_parameters.get_alignment()->get_mi_ld_threshold();
 
 		auto& storage = *m_storage;
 		std::size_t delta = storage.size();
 
 		for( const auto iblock: block_index_range )
 		{
-			const auto iblock_size = iblock == m_mi_parameters.get_last_block_index() ? m_mi_parameters.get_last_block_size() : m_mi_parameters.get_n_loci_per_block();
-
 			m_cputimer.start();
-			// reset local solution buffer
-
+			const auto iblock_size = iblock == m_mi_parameters.get_last_block_index() ? m_mi_parameters.get_last_block_size() : m_mi_parameters.get_n_loci_per_block();
 			const auto threshold = m_mi_parameters.threshold();
 
 			// symmetric matrix; compute upper triangular block matrices
 			for( std::size_t jblock = iblock; jblock < apegrunt::get_number_of_blocks(n_loci); ++jblock )
 			{
+				// reset local solution buffer
 				for( auto& e: m_solution ) { e = 0.0; }
 				// calculate mutual information for all iblock versus jblock data columns
 				m_mi_block_kernel( m_solution.data(), iblock, jblock ); // calculate MI values in 16-by-16 blocks
@@ -366,7 +477,7 @@ public:
 
 				// lock shared storage for thread safety
 				//const auto&& scoped_lock = m_storage->acquire_lock(); // lock will expire once out of scope
-				m_storage->lock();
+				storage.lock();
 				// store solutions
 				if( iblock == jblock ) // blocks on the diagonal
 				{
@@ -400,7 +511,7 @@ public:
 						}
 					}
 				}
-				m_storage->unlock();
+				storage.unlock();
 			}
 
 			delta = storage.size() - delta;
