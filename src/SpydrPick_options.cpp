@@ -37,6 +37,8 @@ int SpydrPick_options::s_threads = 1;
 double SpydrPick_options::s_mi_threshold = -1.;
 std::size_t SpydrPick_options::s_mi_values = 0;
 double SpydrPick_options::s_mi_pseudocount = 0.5;
+std::size_t SpydrPick_options::s_mi_threshold_iterations = 10;
+std::size_t SpydrPick_options::s_mi_threshold_pairs = 10000;
 
 std::string SpydrPick_options::s_options_string;
 
@@ -110,6 +112,7 @@ const std::string& SpydrPick_options::s_get_options_string() { return s_options_
 void SpydrPick_options::m_set_options_string( const std::string& options_string ) { s_options_string = options_string; }
 
 bool SpydrPick_options::verbose() { return ( s_verbose && s_out ); } // be verbose only if we have a valid outstream.
+void SpydrPick_options::set_verbose( bool value ) { s_verbose = value; }
 
 int SpydrPick_options::threads() { return s_threads; }
 
@@ -117,6 +120,8 @@ double SpydrPick_options::get_mi_threshold() { return s_mi_threshold; }
 void SpydrPick_options::set_mi_threshold( double threshold ) { s_mi_threshold = threshold; }
 std::size_t SpydrPick_options::get_mi_values() { return s_mi_values; }
 double SpydrPick_options::get_mi_pseudocount() { return s_mi_pseudocount; }
+std::size_t SpydrPick_options::get_mi_threshold_iterations() { return s_mi_threshold_iterations; }
+std::size_t SpydrPick_options::get_mi_threshold_pairs() { return s_mi_threshold_pairs; }
 
 void SpydrPick_options::m_init()
 {
@@ -129,6 +134,8 @@ void SpydrPick_options::m_init()
 		("mi-threshold", po::value< double >( &SpydrPick_options::s_mi_threshold )->default_value(SpydrPick_options::s_mi_threshold), "The MI threshold value. Experience suggests that a value of 0.11 is often reasonable. Zero indicates no threshold and negative values will trigger auto-define heuristics.")
 		("mi-values", po::value< std::size_t >( &SpydrPick_options::s_mi_values )->default_value(SpydrPick_options::s_mi_values), "Approximate number of MI values to calculate from data (default=#samples*100).")
 		("mi-pseudocount", po::value< double >( &SpydrPick_options::s_mi_pseudocount )->default_value(SpydrPick_options::s_mi_pseudocount), "The MI pseudocount value.")
+		("mi-threshold-iterations", po::value< std::size_t >( &SpydrPick_options::s_mi_threshold_iterations )->default_value(SpydrPick_options::s_mi_threshold_iterations), "Number of iterations for estimating saving threshold.")
+		("mi-threshold-pairs", po::value< std::size_t >( &SpydrPick_options::s_mi_threshold_pairs )->default_value(SpydrPick_options::s_mi_threshold_pairs), "Number of sampled pairs for estimating saving threshold.")
 	;
 	m_parallel_options.add_options()
 #ifndef SPYDRPICK_NO_TBB // Threading with Threading Building Blocks

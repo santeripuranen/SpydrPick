@@ -58,6 +58,7 @@ public:
 
 	//> Test if textual output is desired. If true, then a call to get_out_stream() is guaranteed to return a valid (as in != null_ptr) ostream*.
 	static bool verbose();
+	static void set_verbose( bool value );
 
 	static int threads();
 
@@ -65,6 +66,8 @@ public:
 	static void set_mi_threshold( double threshold );
 	static std::size_t get_mi_values();
 	static double get_mi_pseudocount();
+	static std::size_t get_mi_threshold_iterations();
+	static std::size_t get_mi_threshold_pairs();
 
 private:
 	static bool s_verbose;
@@ -75,6 +78,8 @@ private:
 	static double s_mi_threshold;
 	static std::size_t s_mi_values;
 	static double s_mi_pseudocount;
+	static std::size_t s_mi_threshold_iterations;
+	static std::size_t s_mi_threshold_pairs;
 
 	static const std::string s_title_string;
 	static const std::string s_usage_string;
