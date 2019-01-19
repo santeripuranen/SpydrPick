@@ -1,6 +1,6 @@
-/** @file aracne_options.h
+/** @file ARACNE_options.h
 
-	Copyright (c) 2018 Santeri Puranen.
+	Copyright (c) 2018-2019 Santeri Puranen.
 
 	This program is free software: you can redistribute it and/or modify
 	it under the terms of the GNU Affero General Public License as
@@ -46,10 +46,11 @@ public:
 	bool has_edgelist_filenames() const;
 	const std::vector< std::string >& get_edgelist_filenames() const;
 
-	const std::string& get_outfilename();
+	static const std::string& outfilename();
 
-	static double get_edge_threshold();
-	static void set_edge_threshold( double threshold );
+	static double edge_threshold();
+	static std::size_t block_size();
+	static std::size_t node_grouping_size();
 
 	static void set_out_stream( std::ostream* out );
 	static void set_err_stream( std::ostream* err );
@@ -79,7 +80,11 @@ private:
 
 	static std::vector< std::string > s_edgelist_filenames;
 	static std::string s_output_filename;
+	static double s_filter_threshold;
+
 	static double s_edge_threshold;
+	static std::size_t s_block_size;
+	static std::size_t s_node_grouping_size;
 
 	static const std::string s_title_string;
 	static const std::string s_usage_string;
@@ -94,8 +99,9 @@ private:
 	static void s_init_output_filename( const std::string& filename );
 
 	po::options_description
-		m_general_options/*("aracne general options")*/,
-		m_parallel_options/*("aracne parallel options")*/
+		m_general_options/*("ARACNE general options")*/,
+		m_parallel_options/*("ARACNE parallel options")*/,
+		m_algorithm_options/*("ARACNE algorithm options")*/
 	;
 
 };

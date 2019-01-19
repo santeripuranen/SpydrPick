@@ -1,6 +1,6 @@
-/** @file aracne.hpp
+/** @file ARACNE_version.h
 
-	Copyright (c) 2018 Juri Kuronen and Santeri Puranen.
+	Copyright (c) 2018-2019 Santeri Puranen.
 
 	This program is free software: you can redistribute it and/or modify
 	it under the terms of the GNU Affero General Public License as
@@ -15,21 +15,21 @@
 	You should have received a copy of the GNU Affero General Public License
 	along with this program. If not, see <http://www.gnu.org/licenses/>.
 
-	@author Juri Kuronen and Santeri Puranen
+	@author Santeri Puranen
 	$Id: $
 */
-#ifndef ARACNE_HPP
-#define ARACNE_HPP
+#ifndef ARACNE_VERSION_H
+#define ARACNE_VERSION_H
 
 namespace aracne {
-/*
-#pragma message("Implement ARACNE here")
 
-void run_ARACNE( network )
+struct ARACNE_version
 {
-	return;
-}
-*/
+	static const int s_MajorVersion = 0; // substantial rewrite
+	static const int s_MinorVersion = 1; // feature change
+	static const int s_SubminorVersion = 0; // bugfix, small enhancement
+};
+
 } // namespace aracne
 
-#endif // ARACNE_HPP
+#endif // ARACNE_VERSION_H

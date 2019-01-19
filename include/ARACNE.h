@@ -27,6 +27,7 @@
 #include "tbb/task_scheduler_init.h"
 #endif // #ifndef SPYDRPICK_NO_TBB
 
-#include "aracne_options.h"
+#include "ARACNE_options.h"
+#include "ARACNE.hpp"
 
 #endif // ARACNE_H

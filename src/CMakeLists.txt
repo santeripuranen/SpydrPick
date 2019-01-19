@@ -19,11 +19,12 @@ link_directories( ${Boost_LIBRARY_DIRS} )
 set( SPYDRPICK_SOURCES
 	SpydrPick.cpp
 	SpydrPick_options.cpp
+	ARACNE_options.cpp
 ) # *.cpp *.hpp *.cc
 
 set( ARACNE_SOURCES
-	aracne.cpp
-	aracne_options.cpp
+	ARACNE.cpp
+	ARACNE_options.cpp
 )
 
 #################################

@@ -34,8 +34,9 @@
 #include "apegrunt/ValueVector_parser.hpp"
 #include "misc/Stopwatch.hpp"
 
-#include "../include/SpydrPick.h"
-#include "../include/SpydrPick.hpp"
+#include "SpydrPick.h"
+#include "SpydrPick.hpp"
+#include "ARACNE.h"
 
 /*
  * The main program
@@ -65,6 +66,9 @@ int main(int argc, char **argv)
 
 	apegrunt::Apegrunt_options apegrunt_options( &std::cout, &std::cerr );
 	apegrunt_options.AddOptions( &all_options ); // add options of apegrunt
+
+	aracne::ARACNE_options aracne_options( &std::cout, &std::cerr );
+	aracne_options.AddOptions( &all_options ); // add options of apegrunt
 
 	po::variables_map options_map;
 
@@ -305,9 +309,22 @@ int main(int argc, char **argv)
 		steptimer.print_timing_stats();	*SpydrPick_options::get_out_stream() << "\n";
 	}
 
-	/*
-	ARACNE comes here
-	*/
+	if( !SpydrPick_options::no_aracne() )
+	{
+		steptimer.start();
+		if( SpydrPick_options::verbose() )
+		{
+			*SpydrPick_options::get_out_stream() << "SpydrPick: run ARACNE\n"; SpydrPick_options::get_out_stream()->flush();
+		}
+
+		aracne::run_ARACNE( network );
+
+		steptimer.stop();
+		if( SpydrPick_options::verbose() )
+		{
+			steptimer.print_timing_stats();	*SpydrPick_options::get_out_stream() << "\n";
+		}
+	}
 
 	// output final coupling scores
 	{

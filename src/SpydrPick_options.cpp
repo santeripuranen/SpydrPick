@@ -39,6 +39,7 @@ std::size_t SpydrPick_options::s_mi_values = 0;
 double SpydrPick_options::s_mi_pseudocount = 0.5;
 std::size_t SpydrPick_options::s_mi_threshold_iterations = 10;
 std::size_t SpydrPick_options::s_mi_threshold_pairs = 10000;
+bool SpydrPick_options::s_no_aracne = false;
 
 std::string SpydrPick_options::s_options_string;
 
@@ -122,6 +123,8 @@ std::size_t SpydrPick_options::get_mi_values() { return s_mi_values; }
 double SpydrPick_options::get_mi_pseudocount() { return s_mi_pseudocount; }
 std::size_t SpydrPick_options::get_mi_threshold_iterations() { return s_mi_threshold_iterations; }
 std::size_t SpydrPick_options::get_mi_threshold_pairs() { return s_mi_threshold_pairs; }
+bool SpydrPick_options::no_aracne() { return s_no_aracne; }
+
 
 void SpydrPick_options::m_init()
 {
@@ -136,6 +139,7 @@ void SpydrPick_options::m_init()
 		("mi-pseudocount", po::value< double >( &SpydrPick_options::s_mi_pseudocount )->default_value(SpydrPick_options::s_mi_pseudocount), "The MI pseudocount value.")
 		("mi-threshold-iterations", po::value< std::size_t >( &SpydrPick_options::s_mi_threshold_iterations )->default_value(SpydrPick_options::s_mi_threshold_iterations), "Number of iterations for estimating saving threshold.")
 		("mi-threshold-pairs", po::value< std::size_t >( &SpydrPick_options::s_mi_threshold_pairs )->default_value(SpydrPick_options::s_mi_threshold_pairs), "Number of sampled pairs for estimating saving threshold.")
+		("no-aracne", po::bool_switch( &SpydrPick_options::s_no_aracne )->default_value(SpydrPick_options::s_no_aracne), "Skip ARACNE, only calculate MI.")
 	;
 	m_parallel_options.add_options()
 #ifndef SPYDRPICK_NO_TBB // Threading with Threading Building Blocks

@@ -21,8 +21,8 @@
 
 #include <limits>
 
-#include "../include/aracne_version.h"
-#include "aracne_options.h"
+#include "ARACNE_version.h"
+#include "ARACNE_options.h"
 
 namespace aracne {
 
@@ -39,7 +39,7 @@ int ARACNE_options::s_threads = 1;
 std::string ARACNE_options::s_options_string;
 
 const std::string ARACNE_options::s_title_string(
-	  std::string("A stand-alone implementation of \"ARACNE (Algorithm for the Reconstruction of Accurate Cellular Networks)\", reported in https://doi.org/10.1186/1471-2105-7-S1-S7.\n")
+	  std::string("An implementation of \"ARACNE (Algorithm for the Reconstruction of Accurate Cellular Networks)\", reported in https://doi.org/10.1186/1471-2105-7-S1-S7.\n")
 );
 
 const std::string ARACNE_options::s_usage_string(
@@ -65,12 +65,12 @@ const std::string ARACNE_options::s_version_string(
 );
 
 const std::string ARACNE_options::s_copyright_notice(
-	std::string("Copyright (c) 2018 Juri Kuronen and Santeri Puranen\nLicensed under the GNU Affero General Public License version 3.\n\n")
+	std::string("Copyright (c) 2018-2019 Juri Kuronen and Santeri Puranen\nLicensed under the GNU Affero General Public License version 3.\n\n")
 	+ "THIS SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND."
 );
 
 const std::string ARACNE_options::s_long_copyright_notice(
-	std::string("Copyright (c) 2018 Juri Kuronen and Santeri Puranen\nLicensed under the GNU Affero General Public License version 3.\n\n")
+	std::string("Copyright (c) 2018-2019 Juri Kuronen and Santeri Puranen\nLicensed under the GNU Affero General Public License version 3.\n\n")
 	+ "This program is free software: you can redistribute it and/or modify\n"
     + "it under the terms of the GNU Affero General Public License as\n"
     + "published by the Free Software Foundation, either version 3 of the\n"
@@ -94,10 +94,12 @@ ARACNE_options::ARACNE_options( std::ostream *out, std::ostream *err )
 }
 
 std::vector< std::string > ARACNE_options::s_edgelist_filenames;
-std::string ARACNE_options::s_output_filename;
+std::string ARACNE_options::s_output_filename("aracne.out");
+double ARACNE_options::s_filter_threshold;
 
-
-double ARACNE_options::s_edge_threshold = std::numeric_limits<double>::lowest();
+double ARACNE_options::s_edge_threshold = std::numeric_limits<double>::epsilon();
+std::size_t ARACNE_options::s_block_size = 16384;
+std::size_t ARACNE_options::s_node_grouping_size = 16;
 
 const std::string& ARACNE_options::s_get_copyright_notice_string() { return s_copyright_notice; }
 const std::string& ARACNE_options::s_get_usage_string() { return s_usage_string; }
@@ -107,8 +109,11 @@ const std::string& ARACNE_options::s_get_title_string() { return s_title_string;
 bool ARACNE_options::has_edgelist_filenames() const { return !s_edgelist_filenames.empty(); }
 const std::vector< std::string >& ARACNE_options::get_edgelist_filenames() const { return s_edgelist_filenames; }
 
-double ARACNE_options::get_edge_threshold() { return s_edge_threshold; }
-void ARACNE_options::set_edge_threshold( double threshold ) { s_edge_threshold = threshold; }
+const std::string& ARACNE_options::outfilename() { return s_output_filename; }
+
+double ARACNE_options::edge_threshold() { return s_edge_threshold; }
+std::size_t ARACNE_options::block_size() { return s_block_size; }
+std::size_t ARACNE_options::node_grouping_size() { return s_node_grouping_size; }
 
 void ARACNE_options::set_out_stream( std::ostream *out ) { s_out = out->good() ? out : nullptr; }
 void ARACNE_options::set_err_stream( std::ostream *err ) { s_err = err->good() ? err : nullptr; }
@@ -127,25 +132,37 @@ void ARACNE_options::m_init()
 {
 	namespace po = boost::program_options;
 
+#ifdef ARACNE_STANDALONE
 	m_general_options.add_options()
 		("help,h", "Print this help message.")
 		("verbose,v", po::bool_switch( &ARACNE_options::s_verbose )->default_value(ARACNE_options::s_verbose)->notifier(ARACNE_options::s_init_verbose), "Be verbose.")
 		("edgelistfile", po::value< std::vector< std::string > >( &ARACNE_options::s_edgelist_filenames )->composing(), "The input edgelist filename(s). When two or more filenames are specified, the edges found in each file are assumed to be subpartitions of the same network.")
 		("outputfile,o", po::value< std::string >( &ARACNE_options::s_output_filename )->notifier(ARACNE_options::s_init_output_filename), "The output filename. By default output filename is derived from the first input edgelist filename.")
-		("threshold", po::value< double >( &ARACNE_options::s_edge_threshold )->default_value(ARACNE_options::s_edge_threshold), "Edges with strength below the threshold will be discarded before ARACNE." )
+		("aracne-filter-threshold", po::value< double >( &ARACNE_options::s_filter_threshold )->default_value(ARACNE_options::s_filter_threshold), "Edges with strength below the threshold will be discarded before ARACNE.")
 	;
 	m_parallel_options.add_options()
 #ifndef SPYDRPICK_NO_TBB // Threading with Threading Building Blocks
 		("threads,t", po::value< int >( &ARACNE_options::s_threads )->default_value(ARACNE_options::s_threads)->notifier(ARACNE_options::s_init_threads), "Number of threads per MPI/shared memory node (-1=use all hardware threads that the OS/environment exposes).")
 #endif // SPYDRPICK_NO_TBB
 	;
+#endif // ARANCE_STANDALONE
+	m_algorithm_options.add_options()
+		("aracne-outputfile,o", po::value< std::string >( &ARACNE_options::s_output_filename )->notifier(ARACNE_options::s_init_output_filename)->default_value(ARACNE_options::s_output_filename), "The ARACNE output filename. This is a binary file for \"plot.r\".")
+		("aracne-edge-threshold", po::value< double >( &ARACNE_options::s_edge_threshold )->default_value(ARACNE_options::s_edge_threshold), "Equality tolerance threshold. Edges differing by less than this value are considered equal in strength.")
+		("aracne-block-size", po::value< std::size_t >( &ARACNE_options::s_block_size )->default_value(ARACNE_options::s_block_size), "Block size for graph processing.")
+		("aracne-node-grouping-size", po::value< std::size_t >( &ARACNE_options::s_node_grouping_size )->default_value(ARACNE_options::s_node_grouping_size), "Grouping size for node processing.")
+	;
+
 }
 
 void ARACNE_options::AddOptions( boost::program_options::options_description *opdesc )
 {
 	namespace po = boost::program_options;
+#ifdef ARACNE_STANDALONE
 	opdesc->add(m_general_options);
 	opdesc->add(m_parallel_options);
+#endif // ARANCE_STANDALONE
+	opdesc->add(m_algorithm_options);
 }
 
 /// Check options stored in varmap. Return false if a fatal inconsistency is detected.
@@ -214,7 +231,7 @@ void ARACNE_options::s_init_output_filename( const std::string& filename )
 {
 	if( verbose && s_out )
 	{
-		*s_out << "ARACNE: user-defined output filename is \"" << filename << "\"\n";
+		*s_out << "ARACNE: output filename is \"" << filename << "\"\n";
 	}
 }
 
