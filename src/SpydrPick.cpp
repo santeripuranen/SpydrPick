@@ -85,11 +85,15 @@ int main(int argc, char **argv)
 		po::store( po::command_line_parser(argc, argv).options(all_options).positional(popt).run(), options_map );
 		po::notify(options_map);
 
-		// spydrpick options
+		// SpydrPick options
 		if( !spydrpick_options.CheckOptions(&options_map) )
 		{
 			exit(EXIT_FAILURE);
 		}
+		#ifndef SPYDRPICK_NO_TBB // Threading with Threading Building Blocks
+		SpydrPick_options::set_threads( SpydrPick_options::threads() > 0 ? SpydrPick_options::threads() : tbb_task_scheduler.default_num_threads() );
+		//SpydrPick_options::threads() > 0 ? tbb_task_scheduler.initialize( SpydrPick_options::threads() ) : tbb_task_scheduler.initialize() ); // Threading task scheduler
+		#endif // #ifndef SPYDRPICK_NO_TBB
 
 		// Apegrunt options
 		apegrunt_options.set_verbose( SpydrPick_options::verbose() );
@@ -98,6 +102,14 @@ int main(int argc, char **argv)
 			exit(EXIT_FAILURE);
 		}
 		apegrunt_options.set_threads( SpydrPick_options::threads() );
+
+		// ARACNE options
+		aracne_options.set_verbose( SpydrPick_options::verbose() );
+		if( !aracne_options.CheckOptions(&options_map) )
+		{
+			exit(EXIT_FAILURE);
+		}
+		aracne_options.set_threads( SpydrPick_options::threads() );
 
 		std::cout << SpydrPick_options::s_get_version_string() << "\n"
 				  << apegrunt::Apegrunt_options::s_get_version_string() << "\n\n"
@@ -116,12 +128,14 @@ int main(int argc, char **argv)
 			{
 				*SpydrPick_options::get_out_stream()
 					<< ": using "
-					<< ( SpydrPick_options::threads() > 0 ? SpydrPick_options::threads() : tbb_task_scheduler.default_num_threads() )
+					//<< ( SpydrPick_options::threads() > 0 ? SpydrPick_options::threads() : tbb_task_scheduler.default_num_threads() )
+					<< SpydrPick_options::threads()
 					<< " threads"
 				;
 			}
 			*SpydrPick_options::get_out_stream() << "\n" << std::endl;
 		}
+		//aracne::ARACNE_options::set_threads( SpydrPick_options::threads() > 0 ? SpydrPick_options::threads() : tbb_task_scheduler.default_num_threads() );
 		#endif // #ifndef SPYDRPICK_NO_TBB
 	}
 
