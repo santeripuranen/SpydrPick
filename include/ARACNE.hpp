@@ -337,7 +337,7 @@ void run_ARACNE( apegrunt::Graph_ptr network )
 
     // Start ARACNE procedure.
     auto start = TIME_NOW;
-    aracne(network, nodes, node_mapping, edges );
+    aracne(network, nodes, node_mapping, edges);
     auto end = TIME_NOW;
     std::printf("Ran ARACNE procedure -- %s\n", get_time(TIME_TAKEN(start, end)).data());
 
