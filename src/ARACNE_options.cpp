@@ -231,10 +231,12 @@ void ARACNE_options::s_init_threads( const int& nthreads )
 
 void ARACNE_options::s_init_output_filename( const std::string& filename )
 {
+#ifdef ARANCE_STANDALONE
 	if( verbose && s_out )
 	{
 		*s_out << "ARACNE: output filename is \"" << filename << "\"\n";
 	}
+#endif // ARANCE_STANDALONE
 }
 
 } // namespace aracne
