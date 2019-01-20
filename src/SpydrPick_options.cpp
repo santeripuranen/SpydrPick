@@ -116,6 +116,7 @@ bool SpydrPick_options::verbose() { return ( s_verbose && s_out ); } // be verbo
 void SpydrPick_options::set_verbose( bool value ) { s_verbose = value; }
 
 int SpydrPick_options::threads() { return s_threads; }
+void SpydrPick_options::set_threads( int threads ) { s_threads = threads < 1 ? 1 : threads; }
 
 double SpydrPick_options::get_mi_threshold() { return s_mi_threshold; }
 void SpydrPick_options::set_mi_threshold( double threshold ) { s_mi_threshold = threshold; }

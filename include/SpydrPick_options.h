@@ -61,6 +61,7 @@ public:
 	static void set_verbose( bool value );
 
 	static int threads();
+	static void set_threads( int nthreads );
 
 	static double get_mi_threshold();
 	static void set_mi_threshold( double threshold );

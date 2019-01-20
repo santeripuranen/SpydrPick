@@ -125,8 +125,10 @@ const std::string& ARACNE_options::s_get_options_string() { return s_options_str
 void ARACNE_options::m_set_options_string( const std::string& options_string ) { s_options_string = options_string; }
 
 bool ARACNE_options::verbose() { return ( s_verbose && s_out ); } // be verbose only if we have a valid outstream.
+void ARACNE_options::set_verbose( bool verbose ) { s_verbose = verbose; }
 
 int ARACNE_options::threads() { return s_threads; }
+void ARACNE_options::set_threads( int threads ) { s_threads = threads < 1 ? 1 : threads; }
 
 void ARACNE_options::m_init()
 {

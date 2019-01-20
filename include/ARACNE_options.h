@@ -68,8 +68,10 @@ public:
 
 	//> Test if textual output is desired. If true, then a call to get_out_stream() is guaranteed to return a valid (as in != null_ptr) ostream*.
 	static bool verbose();
+	static void set_verbose( bool verbose=true );
 
 	static int threads();
+	static void set_threads( int nthreads );
 
 private:
 	static bool s_verbose;
