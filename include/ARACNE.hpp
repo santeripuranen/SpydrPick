@@ -192,8 +192,8 @@ void aracne(
 
 	// Start by reading all data to memory.
     // Todo: We don't have to, as we could read one block at a time too.
-    std::vector<uint32_t> edges_data(n_edges * 2);
-    std::vector<double> mi_data(n_edges);
+    std::vector<uint32_t> edges_data; edges_data.reserve(n_edges * 2);
+    std::vector<double> mi_data; mi_data.reserve(n_edges);
 
     for( const auto& edge: *input_graph )
     {
