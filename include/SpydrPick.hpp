@@ -130,6 +130,12 @@ RealT determine_MI_threshold( apegrunt::Alignment_ptr<StateT> alignment, std::si
     std::size_t threshold_idx = (1.0 - double(n_values) / possible_pairs) * threshold_pairs;
     std::vector<RealT> thresholds;
 
+    // Safeguard against small alignments.
+    if( possible_pairs / 10 < threshold_pairs )
+    {
+        threshold_pairs = possible_pairs / 10;
+    }
+
     const auto verbose = SpydrPick_options::verbose();
     SpydrPick_options::set_verbose( false );
 
