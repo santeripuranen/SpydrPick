@@ -123,7 +123,7 @@ RealT determine_MI_threshold( apegrunt::Alignment_ptr<StateT> alignment, std::si
 
     const auto n_loci = alignment->n_loci();
     const std::size_t threshold_iterations = SpydrPick_options::get_mi_threshold_iterations();
-    const std::size_t threshold_pairs = SpydrPick_options::get_mi_threshold_pairs();
+    std::size_t threshold_pairs = SpydrPick_options::get_mi_threshold_pairs();
 
     // Calculate threshold estimate index in the empirical CDF.
     std::size_t possible_pairs = n_loci * (n_loci - 1) / 2;
