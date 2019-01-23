@@ -34,7 +34,7 @@
 #pragma message("Compiling with TBB support")
 //#include "tbb/tbb.h"
 #include "tbb/parallel_reduce.h"
-//#include "tbb/parallel_for.h"
+#include "tbb/parallel_for.h"
 #include "tbb/blocked_range.h" // should be included by parallel_for.h
 //#include "tbb/mutex.h"
 #endif // SPYDRPICK_NO_TBB
@@ -76,7 +76,7 @@ apegrunt::Graph_ptr get_MI_network( std::vector< apegrunt::Alignment_ptr<StateT>
 }
 
 template< typename NodeT >
-std::unordered_set< std::pair<NodeT,NodeT>, boost::hash< std::pair<NodeT,NodeT> > > sample_pairs( std::size_t threshold_pairs, std::size_t max_range )
+std::vector< std::pair<NodeT,NodeT> > sample_pairs( std::size_t threshold_pairs, std::size_t max_range )
 {
     using pair_t = std::pair<NodeT,NodeT>;
 
@@ -104,7 +104,14 @@ std::unordered_set< std::pair<NodeT,NodeT>, boost::hash< std::pair<NodeT,NodeT> 
         pairs_set.insert(pair);
     }
 
-    return pairs_set;
+    // Convert to vector.
+    std::vector< pair_t > pairs_vector;
+    for( auto&& p : pairs_set )
+    {
+        pairs_vector.push_back(std::move(p));
+    }
+
+    return pairs_vector;
 }
 
 template< typename RealT, typename StateT >
@@ -123,21 +130,34 @@ RealT determine_MI_threshold( apegrunt::Alignment_ptr<StateT> alignment, std::si
     std::size_t threshold_idx = (1.0 - double(n_values) / possible_pairs) * threshold_pairs;
     std::vector<RealT> thresholds;
 
+    // Safeguard against small alignments.
+    if( possible_pairs / 10 < threshold_pairs )
+    {
+        threshold_pairs = possible_pairs / 10;
+    }
+
     const auto verbose = SpydrPick_options::verbose();
     SpydrPick_options::set_verbose( false );
 
     for( std::size_t iter=0; iter<threshold_iterations; ++iter )
     {
-    	std::vector<RealT> mi_values; mi_values.reserve(threshold_pairs);
+    	std::vector<RealT> mi_values(threshold_pairs);
         const auto pairs = sample_pairs<node_t>( threshold_pairs, n_loci - 1 );
-        for( const auto& pair: pairs )
+        #ifndef SPYDRPICK_NO_TBB
+        tbb::parallel_for( tbb::blocked_range<std::size_t>(0, threshold_pairs), [alignment, &mi_values, &pairs](tbb::blocked_range<std::size_t>& r)
         {
-			auto mi_solver = get_MI_solver( std::vector< apegrunt::Alignment_ptr<StateT> >{alignment}, 0.0, SpydrPick_options::get_mi_pseudocount() );
-			mi_solver( pair.first, apegrunt::get_block_index( pair.second), false );
-
-			const auto& graph = *mi_solver.get_graph();
-			mi_values.push_back( graph[ pair.second % apegrunt::StateBlock_size ].weight() );
-        }
+            for( std::size_t pair_idx = r.begin(); pair_idx < r.end(); ++pair_idx)
+            {
+                const auto pair = pairs[pair_idx];
+                auto mi_solver = get_MI_solver( std::vector< apegrunt::Alignment_ptr<StateT> >{alignment}, 0.0, SpydrPick_options::get_mi_pseudocount() );
+                mi_solver( pair.first, apegrunt::get_block_index( pair.second), false );
+                const auto& graph = *mi_solver.get_graph();
+                mi_values[pair_idx] = graph[ pair.second % apegrunt::StateBlock_size ].weight();
+            }
+        });
+        #else
+        
+        #endif // #ifndef SPYDRPICK_NO_TBB
         std::nth_element( mi_values.begin(), mi_values.begin() + threshold_idx, mi_values.end() );
         thresholds.push_back( mi_values[threshold_idx] );
     }
