@@ -280,6 +280,15 @@ void aracne(const std::string& edges_file, const std::string& mi_file, uint32_t 
 
         // Run the ARACNE procedure on the new block of edges.
         auto start_processing = TIME_NOW;
+        // Safeguard for a particular threshold=0 case, where sequential edges with the same mi-value form a clique
+        // that would not be processed correctly due to the sequence being cut by the block ending.
+        if (threshold == 0.0 && block > 0 && edges[block - 1].mi == edges[block].mi) {
+            // Move back to the start of the sequence and reprocess.
+            uint32_t idx = block;
+            while (--idx >= 0 && edges[idx].mi == edges[block].mi);
+            for (uint32_t thr = 0; thr < n_threads; ++thr) threads[thr] = std::thread(process_block, idx, block, thr);
+            for (auto& thr : threads) thr.join();
+        }
         for (uint32_t thr = 0; thr < n_threads; ++thr) threads[thr] = std::thread(process_block, block, block_end, thr);
         for (auto& thr : threads) thr.join();
         auto end_processing = TIME_NOW;
