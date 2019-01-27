@@ -258,11 +258,11 @@ int main(int argc, char **argv)
 			if( SpydrPick_options::verbose() ) { cputimer.print_timing_stats(); }
  		}
 
-		// get state frequency profile and output to file
-		apegrunt::output_state_frequencies( alignment );
-
 		// assign sample weights (parse from file or determine automatically)
 		apegrunt::cache_sample_weights( alignment );
+
+		// get state frequency profile and output to file
+		apegrunt::output_state_frequencies( alignment );
 
 		// automatically determine MI threshold
 		if( SpydrPick_options::get_mi_threshold() < 0 )
