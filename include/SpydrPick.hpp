@@ -114,12 +114,60 @@ std::vector< std::pair<NodeT,NodeT> > sample_pairs( std::size_t threshold_pairs,
     return pairs_vector;
 }
 
+template< typename StateT, typename NodeT, typename RealT >
+struct single_edge_MI_solver
+{
+	using state_t = StateT;
+	using node_t = NodeT;
+	using real_t = RealT;
+	using my_type = single_edge_MI_solver<state_t,node_t,real_t>;
+
+	single_edge_MI_solver( apegrunt::Alignment_ptr<StateT> alignment, const std::vector< std::pair<node_t,node_t> >& edges, std::vector<real_t>& storage )
+	: m_alignment(alignment),
+	  m_edges(edges),
+	  m_storage(storage),
+	  m_mi_solver( get_MI_solver( std::vector< apegrunt::Alignment_ptr<state_t> >{ alignment }, 0.0, SpydrPick_options::get_mi_pseudocount() ) )
+	{ }
+
+	single_edge_MI_solver( const my_type& other )
+	: m_alignment( other.m_alignment ),
+	  m_edges( other.m_edges ),
+	  m_storage( other.m_storage ),
+	  m_mi_solver( get_MI_solver( std::vector< apegrunt::Alignment_ptr<state_t> >{ other.m_alignment }, 0.0, SpydrPick_options::get_mi_pseudocount() ) )
+	{ }
+
+	~single_edge_MI_solver() = default;
+
+	inline void operator()( tbb::blocked_range<node_t>& r ) const
+	{
+		for( auto pair_idx = r.begin(); pair_idx < r.end(); ++pair_idx )
+		{
+			(*this)( pair_idx );
+		}
+	}
+
+	inline void operator()( node_t pair_idx ) const
+	{
+			const auto& pair = m_edges[pair_idx];
+			//std::cout << "pair_idx=" << pair_idx << " pair=(" << pair.first << "," << pair.second << ")" << std::endl;
+			m_storage[pair_idx] = m_mi_solver.single( pair.first, pair.second );
+			//const auto& graph = *mi_solver.get_graph();
+			//mi_values[pair_idx] = graph[ pair.second % apegrunt::StateBlock_size ].weight();
+	}
+
+	apegrunt::Alignment_ptr<state_t> m_alignment;
+	const std::vector< std::pair<node_t,node_t> >& m_edges;
+	std::vector<real_t>& m_storage;
+	mutable MI_solver<real_t, state_t> m_mi_solver;
+
+};
+
 template< typename RealT, typename StateT >
 RealT determine_MI_threshold( apegrunt::Alignment_ptr<StateT> alignment, std::size_t n_values )
 {
-    using default_state_t = apegrunt::nucleic_acid_state_t;
-    using alignment_default_storage_t = apegrunt::Alignment_impl_block_compressed_storage< apegrunt::StateVector_impl_block_compressed_alignment_storage<default_state_t> >;
-    using node_t = std::size_t;
+	using real_t = RealT;
+	using state_t = StateT;
+	using node_t = std::size_t;
 
     const auto n_loci = alignment->n_loci();
     const std::size_t threshold_iterations = SpydrPick_options::get_mi_threshold_iterations();
@@ -137,26 +185,17 @@ RealT determine_MI_threshold( apegrunt::Alignment_ptr<StateT> alignment, std::si
     }
 
     const auto verbose = SpydrPick_options::verbose();
-    SpydrPick_options::set_verbose( false );
+    //SpydrPick_options::set_verbose( false );
 
     for( std::size_t iter=0; iter<threshold_iterations; ++iter )
     {
     	std::vector<RealT> mi_values(threshold_pairs);
         const auto pairs = sample_pairs<node_t>( threshold_pairs, n_loci - 1 );
+        auto mi_solver = single_edge_MI_solver<state_t,node_t,real_t>( alignment, pairs, mi_values );
         #ifndef SPYDRPICK_NO_TBB
-        tbb::parallel_for( tbb::blocked_range<std::size_t>(0, threshold_pairs), [alignment, &mi_values, &pairs](tbb::blocked_range<std::size_t>& r)
-        {
-            for( std::size_t pair_idx = r.begin(); pair_idx < r.end(); ++pair_idx)
-            {
-                const auto pair = pairs[pair_idx];
-                auto mi_solver = get_MI_solver( std::vector< apegrunt::Alignment_ptr<StateT> >{alignment}, 0.0, SpydrPick_options::get_mi_pseudocount() );
-                mi_solver( pair.first, apegrunt::get_block_index( pair.second), false );
-                const auto& graph = *mi_solver.get_graph();
-                mi_values[pair_idx] = graph[ pair.second % apegrunt::StateBlock_size ].weight();
-            }
-        });
+        tbb::parallel_for( tbb::blocked_range<std::size_t>(0, threshold_pairs), mi_solver );
         #else
-        
+        for( const auto edge: pairs ) { mi_solver(edge); }
         #endif // #ifndef SPYDRPICK_NO_TBB
         std::nth_element( mi_values.begin(), mi_values.begin() + threshold_idx, mi_values.end() );
         thresholds.push_back( mi_values[threshold_idx] );
