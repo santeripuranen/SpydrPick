@@ -9,7 +9,7 @@ all: spydrpick
 
 spydrpick: 
 		mkdir -p $(BUILDDIR)
-			$(CXX) $(CXXFLAGS) $(SRCDIR)/aracne.cpp -o $(BUILDDIR)/aracne
+			$(CXX) $(CXXFLAGS) $(SRCDIR)/ARACNE.cpp -o $(BUILDDIR)/aracne
 			$(CXX) $(CXXFLAGS) $(SRCDIR)/mi_gwes.cpp -o $(BUILDDIR)/mi_gwes
 
 .PHONY: clean
