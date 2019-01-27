@@ -1,6 +1,6 @@
 # Version $Id: $
 
-# spydrpick src
+# SpydrPick src
 
 ############################
 ## Add sources and includes
@@ -51,6 +51,7 @@ set( CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -Wall ${SPYDRPICK_GCC_OPTIM
 #set( CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wignored-attributes" )
 set( CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${SPYDRPICK_GCC_OPTIMIZATION_FLAGS}" )
 
+# set preferred linker
 set( CMAKE_LINKER "ld.gold" )
 
 if( SPYDRPICK_SOURCES )
