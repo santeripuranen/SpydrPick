@@ -342,8 +342,6 @@ void run_ARACNE( apegrunt::Graph_ptr network )
     std::unordered_map<uint32_t, uint32_t> node_mapping; // Nodes in user-provided edge list can range freely but will be mapped sequentially to {0, 1, ...}.
     std::vector<struct edge> edges(n_edges);
 
-    std::string output_file("aracne.out");
-
     // Start ARACNE procedure.
     auto start = TIME_NOW;
     aracne(network, nodes, node_mapping, edges);
@@ -354,8 +352,23 @@ void run_ARACNE( apegrunt::Graph_ptr network )
     // Todo: Input&output files are binary now, but we probably want a csv-format.
     start = TIME_NOW;
     std::vector<uint32_t> data_out(n_edges);
-    for (uint32_t i = 0; i < n_edges; ++i) data_out[i] = !edges[i].marked_for_removal;
-    std::ofstream( aracne::ARACNE_options::outfilename(), std::ios::out | std::ios::binary).write((char*) data_out.data(), n_edges * sizeof(uint32_t));
+
+    auto& ntwrk = *network;
+    for( std::size_t i = 0; i < n_edges; ++i)
+    {
+    	if( !edges[i].marked_for_removal ) { ntwrk[i].set(); } // flag ARACNE edges in the SpydrPick graph
+    	data_out[i] = !edges[i].marked_for_removal;
+    }
+
+	// Ensure that we always get a unique output filename
+	auto aracne_outfile = apegrunt::get_unique_ofstream( aracne::ARACNE_options::outfilename() );
+
+	if( aracne_outfile->stream()->is_open() && aracne_outfile->stream()->good() )
+	{
+		aracne_outfile->stream()->write((char*) data_out.data(), n_edges * sizeof(uint32_t));
+	}
+
+    //std::ofstream( aracne::ARACNE_options::outfilename(), std::ios::out | std::ios::binary).write((char*) data_out.data(), n_edges * sizeof(uint32_t));
     end = TIME_NOW;
     std::printf("Wrote output file -- %s\n", get_time(TIME_TAKEN(start, end)).data());
 
