@@ -1,4 +1,4 @@
 [submodule "externals/apegrunt"]
 	path = externals/apegrunt
-	url = https://github.com/santeripuranen/apegrunt.git
+	url = git@github.com:santeripuranen/apegrunt.git
 	branch = development
