@@ -69,6 +69,7 @@ public:
 	static double get_mi_pseudocount();
 	static std::size_t get_mi_threshold_iterations();
 	static std::size_t get_mi_threshold_pairs();
+	static std::size_t get_ld_threshold();
 	static bool no_aracne();
 
 private:
@@ -82,6 +83,7 @@ private:
 	static double s_mi_pseudocount;
 	static std::size_t s_mi_threshold_iterations;
 	static std::size_t s_mi_threshold_pairs;
+	static std::size_t s_ld_threshold;
 	static bool s_no_aracne;
 
 	static const std::string s_title_string;
