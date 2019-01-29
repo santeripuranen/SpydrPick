@@ -301,7 +301,7 @@ int main(int argc, char **argv)
 		*SpydrPick_options::get_out_stream() << "SpydrPick: evaluate MI\n"; SpydrPick_options::get_out_stream()->flush();
 	}
 
-	auto network = spydrpick::get_MI_network( alignments, SpydrPick_options::get_mi_threshold() /*, loci_list */ );
+	auto network = spydrpick::get_MI_network( alignments, SpydrPick_options::get_mi_threshold() );
 
 	steptimer.stop();
 	if( SpydrPick_options::verbose() )
@@ -357,7 +357,14 @@ int main(int argc, char **argv)
 			cputimer.start();
 
 			// produce output
-			*(couplings_file->stream()) << apegrunt::Graph_output_formatter<default_state_t>(network,alignments.front());
+			if( apegrunt::Apegrunt_options::linear_genome() )
+			{
+				*(couplings_file->stream()) << apegrunt::Graph_output_formatter<default_state_t,apegrunt::LinearDistance>(network,alignments.front());
+			}
+			else
+			{
+				*(couplings_file->stream()) << apegrunt::Graph_output_formatter<default_state_t,apegrunt::CircularDistance>(network,alignments.front());
+			}
 
 			cputimer.stop(); cputimer.print_timing_stats(); *SpydrPick_options::get_out_stream() << "\n";
 		}
