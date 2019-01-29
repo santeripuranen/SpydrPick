@@ -22,12 +22,16 @@
 #define MI_HPP
 
 #include <memory> // for std::shared_ptr and std::make_shared
+#include <functional> // for std::less, std::function
 
 //#include <Eigen/Core>
+
+#include "boost/accumulators/statistics/max.hpp"
 
 #include "apegrunt/Alignment.h"
 #include "apegrunt/Apegrunt_utility.hpp"
 #include "apegrunt/aligned_allocator.hpp"
+#include "apegrunt/Distance.hpp"
 
 #include "misc/Coincidence_matrix.hpp"
 #include "misc/Matrix_kernel_access_order.hpp"
@@ -456,6 +460,54 @@ private:
 
 namespace acc = boost::accumulators;
 
+template< typename RealT >
+class maxvaltracker
+{
+public:
+	using real_t = RealT;
+	using my_type = maxvaltracker<real_t>;
+
+	maxvaltracker() = delete;
+	maxvaltracker( std::size_t npos ) : m_npos(npos) { m_bins.resize(m_npos); }
+
+	inline void operator()( std::size_t pos, real_t val ) { m_bins[pos](val); }
+
+	inline void join( const my_type& other )
+	{
+		if( m_npos == other.m_npos )
+		{
+			for( std::size_t i=0; i < m_npos; ++i )
+			{
+				m_bins[i]( acc::max(other.m_bins[i]) );
+			}
+		}
+	}
+
+	template< std::size_t Q >
+	real_t quartile()
+	{
+		using std::begin; using std::end;
+		if( m_vals.size() == 0 )
+		{
+			m_vals.reserve(m_npos);
+			for( const auto& bin: m_bins )
+			{
+				m_vals.push_back( acc::max(bin) );
+			}
+			std::sort( begin(m_vals), end(m_vals), std::less<real_t>() );
+		}
+		return m_vals[m_npos/4*Q];
+	}
+
+	inline std::size_t size() const { return m_bins.size(); }
+
+private:
+	const std::size_t m_npos;
+	std::vector< acc::accumulator_set<real_t, acc::stats<acc::tag::max> > > m_bins;
+	std::vector<real_t> m_vals;
+
+};
+
 template< typename RealT, typename StateT > //, typename OptimizerT >
 class MI_solver
 {
@@ -474,9 +526,18 @@ public:
 	  m_mi_block_kernel( alignments.front(), m_mi_parameters.get_weights(), mi_threshold, pseudocount ),
 	  m_cputimer( SpydrPick_options::verbose() ? SpydrPick_options::get_out_stream() : nullptr ),
 	  m_solution( apegrunt::StateBlock_size*apegrunt::StateBlock_size, 0 ),
-	  m_mi_distribution( acc::tag::distribution::binwidth=0.0001 )
+	  m_mi_distribution( acc::tag::distribution::binwidth=0.0001 ),
+	  m_colmax( alignments.front()->n_loci() )
 	  //m_loci_slice( loci_slice )
 	{
+		if( apegrunt::Apegrunt_options::linear_genome() )
+		{
+			m_distance = apegrunt::GenomeDistance<apegrunt::LinearDistance>( m_mi_parameters.get_alignment() );
+		}
+		else
+		{
+			m_distance = apegrunt::GenomeDistance<apegrunt::CircularDistance>( m_mi_parameters.get_alignment() );
+		}
 	}
 
 	MI_solver( MI_solver<real_t,state_t>&& other )
@@ -486,7 +547,9 @@ public:
 	  m_mi_block_kernel( other.m_mi_block_kernel ),
 	  m_cputimer( other.m_cputimer ),
 	  m_solution( other.m_solution.size(), 0 ), // each instance has its own private solution buffer
-	  m_mi_distribution( acc::tag::distribution::binwidth=0.0001 ) // each instance has its own private accumulator
+	  m_mi_distribution( acc::tag::distribution::binwidth=0.0001 ), // each instance has its own private accumulator
+	  m_colmax( other.m_colmax.size() ), // each instance has its own private accumulator
+	  m_distance( other.m_distance )
 	  //m_loci_slice( std::move( other.m_loci_slice ) )
 	{
 	}
@@ -500,7 +563,9 @@ public:
 	  m_mi_block_kernel( other.m_mi_block_kernel ),
 	  m_cputimer( other.m_cputimer ),
 	  m_solution( other.m_solution.size(), 0 ), // each instance has its own private solution vector
-	  m_mi_distribution( acc::tag::distribution::binwidth=0.0001 ) // each instance has its own private accumulator
+	  m_mi_distribution( acc::tag::distribution::binwidth=0.0001 ), // each instance has its own private accumulator
+	  m_colmax( other.m_colmax.size() ), // each instance has its own private accumulator
+	  m_distance( other.m_distance )
 	  //m_loci_slice( other.m_loci_slice )
 	{
 	}
@@ -511,6 +576,7 @@ public:
 	{
 		m_storage->join( *(rhs.m_storage) );
 		// m_mi_distribution.join( rhs.m_mi_distribution ); // accumulator joining not implemented yet
+		m_colmax.join( rhs.m_colmax );
 	}
 
 	inline apegrunt::Graph_ptr get_graph() const { return m_storage; }
@@ -522,6 +588,8 @@ public:
 		m_mi_block_kernel.single( &mi, ipos, jpos );
 		return mi;
 	}
+
+	inline maxvaltracker<real_t>& get_quartiles() { return m_colmax; }
 
 	// Calculate MIs for a single position against a block of positions. Self interactions are included.
 	inline void operator()( std::size_t icol, std::size_t jblock, bool exclude_selfinteraction=true )
@@ -599,12 +667,22 @@ public:
     inline void operator()( const RangeT& block_index_range )
     {
 		const std::size_t n_loci = m_mi_parameters.get_alignment()->n_loci(); // cache the number of loci
-		const auto& index_translation = *(m_mi_parameters.get_alignment()->get_loci_translation());
+		//const auto& index_translation = *(m_mi_parameters.get_alignment()->get_loci_translation());
 		//const auto ld_threshold = m_mi_parameters.get_alignment()->get_mi_ld_threshold();
 
 		auto& storage = *m_storage;
 		std::size_t delta = storage.size();
-
+/*
+		std::function<std::size_t(std::size_t,std::size_t)> distance;
+		if( apegrunt::Apegrunt_options::linear_genome() )
+		{
+			distance = apegrunt::GenomeDistance<apegrunt::LinearDistance>( m_mi_parameters.get_alignment() );
+		}
+		else
+		{
+			distance = apegrunt::GenomeDistance<apegrunt::CircularDistance>( m_mi_parameters.get_alignment() );
+		}
+*/
 		for( const auto iblock: block_index_range )
 		{
 			m_cputimer.start();
@@ -619,10 +697,6 @@ public:
 				// calculate mutual information for all iblock versus jblock data columns
 				//m_mi_block_kernel( m_solution.data(), iblock, jblock ); // calculate MI values in 16-by-16 blocks
 				m_mi_block_kernel.block( m_solution.data(), iblock, jblock ); // calculate MI values in 16-by-16 blocks
-// debug
-				//m_mi_block_kernel( m_solution.data(), 1, m_mi_parameters.get_last_block_index() ); // calculate MI values in 16-by-16 blocks
-				//m_mi_block_kernel.block( m_solution.data(), 1, m_mi_parameters.get_last_block_index() ); // calculate MI values in 16-by-16 blocks
-// debug end
 				const auto jblock_size = jblock == m_mi_parameters.get_last_block_index() ? m_mi_parameters.get_last_block_size() : m_mi_parameters.get_n_loci_per_block();
 
 				// lock shared storage for thread safety
@@ -633,14 +707,21 @@ public:
 				{
 					for( std::size_t i = 0; i < iblock_size; ++i )
 					{
+						const auto ipos = iblock*apegrunt::StateBlock_size+i;
 						for( std::size_t j = i+1; j < jblock_size; ++j ) // j = i would be on the diagonal, hence j = i+1
 						{
 							const auto mi = *(m_solution.data()+jblock_size*i+j);
+							const auto jpos = jblock*apegrunt::StateBlock_size+j;
+							if( m_distance(ipos,jpos) > SpydrPick_options::get_ld_threshold() )
+							{
+								m_colmax( ipos, mi );
+								m_colmax( jpos, mi );
+							}
 							//m_mi_distribution(mi);
 							// Store all solutions that exceed threshold
 							if( threshold < mi )
 							{
-								storage.add( iblock*apegrunt::StateBlock_size+i, jblock*apegrunt::StateBlock_size+j, mi );
+								storage.add( ipos, jpos, mi );
 							}
 						}
 					}
@@ -649,14 +730,21 @@ public:
 				{
 					for( std::size_t i = 0; i < iblock_size; ++i )
 					{
+						const auto ipos = iblock*apegrunt::StateBlock_size+i;
 						for( std::size_t j = 0; j < jblock_size; ++j )
 						{
 							const auto mi = *(m_solution.data()+jblock_size*i+j);
+							const auto jpos = jblock*apegrunt::StateBlock_size+j;
+							if( m_distance(ipos,jpos) > SpydrPick_options::get_ld_threshold() )
+							{
+								m_colmax( ipos, mi );
+								m_colmax( jpos, mi );
+							}
 							//m_mi_distribution(mi);
 							// Store all solutions that exceed threshold
 							if( threshold < mi )
 							{
-								storage.add( iblock*apegrunt::StateBlock_size+i, jblock*apegrunt::StateBlock_size+j, mi );
+								storage.add( ipos, jpos, mi );
 							}
 						}
 					}
@@ -689,6 +777,8 @@ private:
 
 	using allocator_t = apegrunt::memory::AlignedAllocator<real_t>;
 	std::vector<real_t,allocator_t> m_solution;
+	maxvaltracker<real_t> m_colmax;
+	std::function<std::size_t(std::size_t,std::size_t)> m_distance;
 
 	acc::accumulator_set<real_t, acc::stats<acc::tag::std(acc::from_distribution),acc::tag::distribution_bincount> > m_mi_distribution;
 };

@@ -72,6 +72,20 @@ apegrunt::Graph_ptr get_MI_network( std::vector< apegrunt::Alignment_ptr<StateT>
 	spydrpick_ftor( block_range );
 	#endif // #ifndef SPYDRPICK_NO_TBB
 
+	const auto Q1 = mi_solver.get_quartiles(). template quartile<1>();
+	const auto Q3 = mi_solver.get_quartiles(). template quartile<3>();
+
+	const auto outlier_threshold = Q3 + 1.5*(Q3-Q1);
+	const auto extreme_outlier_threshold = Q3 + 3.0*(Q3-Q1);
+
+	if( SpydrPick_options::verbose() )
+	{
+		*SpydrPick_options::get_out_stream() << std::setprecision(6)
+			<< "SpydrPick: outlier threshold=" << outlier_threshold << "\n"
+			<< "SpydrPick: extreme outlier threshold=" << extreme_outlier_threshold << "\n";
+	}
+
+
 	return mi_solver.get_graph();
 }
 
