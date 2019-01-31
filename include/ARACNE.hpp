@@ -325,26 +325,28 @@ void aracne( const apegrunt::Graph_ptr input_graph )
     stopwatch::stopwatch sorttimer( debug ? ARACNE_options::get_out_stream() : nullptr );
     stopwatch::stopwatch processtimer( debug ? ARACNE_options::get_out_stream() : nullptr );
 
-    uint64_t time_blocks = 0;
+    // Debug counters.
     uint64_t time_edges = 0;
     uint64_t time_sort = 0;
     uint64_t time_process = 0;
+    uint64_t time_edges_global = 0;
+    uint64_t time_sort_global = 0;
+    uint64_t time_process_global = 0;
 
     std::unordered_map< node_id_t, std::shared_ptr<std::mutex> > node_mtx;
     std::unordered_map< node_id_t, std::vector< std::pair<node_id_t,edge_id_t> > > node_neighborhoods;
 
-    if( aracne::ARACNE_options::verbose() ) { *aracne::ARACNE_options::get_out_stream() << "ARACNE: Initialize node_mtx and node_neighborhoods\n"; }
     steptimer.start();
     initialize_node_mtx_and_neighborhoods<node_id_t,edge_id_t>( input_graph, node_mtx, node_neighborhoods );
     steptimer.stop();
-    if( aracne::ARACNE_options::verbose() ) { steptimer.print_timing_stats(); *ARACNE_options::get_out_stream() << "\n"; }
+    if( aracne::ARACNE_options::verbose() ) { *aracne::ARACNE_options::get_out_stream() << "  initialization routine time=" << stopwatch::time_string(steptimer.elapsed_time()) << "\n"; }
 
     steptimer.start();
     for( std::size_t block_start = 0; block_start < n_edges; block_start += block_size )
     {
         std::size_t block_end = std::min( block_start + block_size, (std::size_t) n_edges );
 
-        edgestimer.start();
+        edgestimer.start(); // Debug timer.
         std::vector< std::pair<node_id_t,node_id_t> > processed_edges(block_end - block_start);
         // Read next block of edges into neighborhood vector. Trusts that network contains no duplicate edges.
         auto reader = block_reader<node_id_t,edge_id_t>( input_graph, node_neighborhoods, node_mtx, processed_edges, block_start );
@@ -356,7 +358,7 @@ void aracne( const apegrunt::Graph_ptr input_graph )
         edgestimer.stop();
         time_edges += edgestimer.elapsed_time();
 
-        sorttimer.start();
+        sorttimer.start(); // Debug timer.
         // Re-sorts node neighborhoods after new block of edges was added.
         std::unordered_map<node_id_t,node_id_t> processed_nodes = create_processed_nodes_map<node_id_t>( processed_edges );
         auto sorter = block_sorter<node_id_t,edge_id_t>( node_neighborhoods, processed_nodes );
@@ -368,7 +370,7 @@ void aracne( const apegrunt::Graph_ptr input_graph )
         sorttimer.stop();
         time_sort += sorttimer.elapsed_time();
 
-        processtimer.start();
+        processtimer.start(); // Debug timer.
         auto processor = block_processor<node_id_t,edge_id_t,real_t>( input_graph, node_neighborhoods, threshold );
 
         // Safeguard for a particular threshold=0 case, where sequential edges with the same mi-value form a clique
@@ -399,21 +401,33 @@ void aracne( const apegrunt::Graph_ptr input_graph )
             std::ostringstream oss;
             std::size_t verbose_previous_block_end = verbose_previous_block_start + block_size;
             steptimer.stop();
-            time_blocks += steptimer.elapsed_time();
-            oss << "ARACNE: processed blocks (" << verbose_previous_block_start << ", " << verbose_previous_block_end << ") to ("
-                << block_start << ", " << block_end << "). Total time: " << stopwatch::time_string(time_blocks) << ".\n";
+            oss << "  processed blocks (" << verbose_previous_block_start << ", " << verbose_previous_block_end << "), ..., ("
+                << block_start << ", " << block_end << ") time=" << stopwatch::time_string(steptimer.elapsed_time()) << "\n";
             if( debug )
             {
-                oss << "ARACNE: (Debug) Reading blocks " << stopwatch::time_string(time_edges + time_sort)
+                oss << "  (Debug) reading blocks " << stopwatch::time_string(time_edges + time_sort)
                     << " (processing " << stopwatch::time_string(time_edges) 
-                    << ", sorting " << stopwatch::time_string(time_sort) 
-                    << "), Processing blocks " << stopwatch::time_string(time_process) << '\n';
+                    << " + sorting " << stopwatch::time_string(time_sort) 
+                    << "), processing blocks " << stopwatch::time_string(time_process) << '\n';
             }
             *aracne::ARACNE_options::get_out_stream() << oss.str();
             verbose_previous_block_start = block_start;
             steptimer.start();
+            time_edges_global += time_edges;
+            time_sort_global += time_sort;
+            time_process_global += time_process;
+            time_edges = 0;
+            time_sort = 0;
+            time_process = 0;
         }
 
+    }
+
+    if( debug ){
+        *aracne::ARACNE_options::get_out_stream() << "  (DEBUG) TOTAL reading blocks " << stopwatch::time_string(time_edges_global + time_sort_global)
+            << " (processing " << stopwatch::time_string(time_edges_global) 
+            << " + sorting " << stopwatch::time_string(time_sort_global) 
+            << "), processing blocks " << stopwatch::time_string(time_process_global) << '\n';
     }
 }
 
