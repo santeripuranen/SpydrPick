@@ -47,72 +47,6 @@
 
 namespace aracne {
 
-// Searches for key (=node) in the sorted neighborhood vector. Returns edge index if found, std::numeric_limits::max() otherwise.
-template< typename NodeIdT, typename EdgeIdT >
-EdgeIdT binary_search( const std::vector< std::pair<NodeIdT,EdgeIdT> >& vector, NodeIdT key )
-{
-    using node_id_t = NodeIdT;
-    using edge_id_t = EdgeIdT;
-    for( std::int32_t a = 0, b = vector.size() - 1, mid = (a + b) / 2; a <= b; mid = (a + b) / 2 )
-    {
-        node_id_t neighbor = vector[mid].first;
-        if( neighbor == key )
-        {
-            return vector[mid].second;
-        }
-        if( neighbor > key )
-        {
-            b = mid - 1;
-        }
-        else
-        {
-            a = mid + 1;
-        }
-    }
-    return std::numeric_limits<edge_id_t>::max();
-}
-
-/*
- * Finds intersection of ne(node1) and ne(node2). Nodes in this intersection form 3-cliques/triangles with node1 and node2.
- * Returns a vector of edge index pairs for edges (node1, node3) and (node2, node3) for each node3 in intersection.
-*/
-template< typename NodeIdT, typename EdgeIdT >
-std::vector< std::pair<EdgeIdT,EdgeIdT> > intersection( const std::unordered_map< NodeIdT, std::vector< std::pair<NodeIdT,EdgeIdT> > >& node_neighborhoods, NodeIdT node1, NodeIdT node2 )
-{
-    using edge_id_t = EdgeIdT;
-    std::vector< std::pair<edge_id_t,edge_id_t> > intersection_edges;
-    for( const auto& neighbor : node_neighborhoods.at(node1) )
-    {
-        edge_id_t res = binary_search( node_neighborhoods.at(node2), neighbor.first ); // Returns std::numeric_limits::max() if neighbor was not found.
-        if( res < std::numeric_limits<edge_id_t>::max() )
-        {
-            intersection_edges.emplace_back( res, neighbor.second );
-        };
-    }
-    return intersection_edges;
-}
-
-// Speed up sort by sorting only the relevant range in vector.
-template< typename NodeIdT, typename EdgeIdT >
-void custom_sort( std::vector< std::pair<NodeIdT,EdgeIdT> >& vector, uint32_t new_elements )
-{
-    using vector_type = std::vector< std::pair<NodeIdT,EdgeIdT> >;
-    // Find min_val and max_val in new elements.
-    auto min_val = std::min_element( vector.end() - new_elements, vector.end() );
-    auto max_val = std::max_element( vector.end() - new_elements, vector.end() );
-    // Find relevant range in sorted part of the vector.
-    auto lower_bound = std::lower_bound( vector.begin(), vector.end() - new_elements, *min_val );
-    auto upper_bound = std::upper_bound( vector.begin(), vector.end() - new_elements, *max_val );
-    // Save new values.
-    vector_type new_values( vector.end() - new_elements, vector.end() );
-    // Make space for new values.
-    std::move_backward( upper_bound, vector.end() - new_elements, vector.end() );
-    // Move new values to the end of the range.
-    std::move( new_values.begin(), new_values.end(), upper_bound );
-    // Finally sort the smaller range.
-    std::sort( lower_bound, upper_bound + new_elements );
-}
-
 // Initializes keys for maps for later parallel access.
 template< typename NodeIdT, typename EdgeIdT >
 void initialize_node_mtx_and_neighborhoods( apegrunt::Graph_ptr network, std::unordered_map< NodeIdT, std::shared_ptr<std::mutex> >& node_mtx, std::unordered_map< NodeIdT, std::vector< std::pair<NodeIdT,EdgeIdT> > >& node_neighborhoods )
@@ -243,6 +177,26 @@ public:
 private:
     std::unordered_map< node_id_t, std::vector< std::pair<node_id_t,edge_id_t> > >& m_node_neighborhoods;
     const std::unordered_map<node_id_t,node_id_t>& m_processed_nodes;
+
+    // Speed up sort by sorting only the relevant range in vector.
+    inline void custom_sort( std::vector< std::pair<node_id_t,edge_id_t> >& vector, uint32_t new_elements ) const
+    {
+        // Find min_val and max_val in new elements.
+        auto min_val = std::min_element( vector.end() - new_elements, vector.end() );
+        auto max_val = std::max_element( vector.end() - new_elements, vector.end() );
+        // Find relevant range in sorted part of the vector.
+        auto lower_bound = std::lower_bound( vector.begin(), vector.end() - new_elements, *min_val );
+        auto upper_bound = std::upper_bound( vector.begin(), vector.end() - new_elements, *max_val );
+        // Save new values.
+        std::vector< std::pair<node_id_t,edge_id_t> > new_values( vector.end() - new_elements, vector.end() );
+        // Make space for new values.
+        std::move_backward( upper_bound, vector.end() - new_elements, vector.end() );
+        // Move new values to the end of the range.
+        std::move( new_values.begin(), new_values.end(), upper_bound );
+        // Finally sort the smaller range.
+        std::sort( lower_bound, upper_bound + new_elements );
+    }
+
 };
 
 template< typename NodeIdT, typename EdgeIdT, typename RealT >
@@ -303,6 +257,47 @@ private:
             }
         }
     }
+
+    // Searches for key (=node) in the sorted neighborhood vector. Returns edge index if found, std::numeric_limits::max() otherwise.
+    inline edge_id_t binary_search( const std::vector< std::pair<node_id_t,edge_id_t> >& vector, node_id_t key ) const
+    {
+        for( std::int32_t a = 0, b = vector.size() - 1, mid = (a + b) / 2; a <= b; mid = (a + b) / 2 )
+        {
+            node_id_t neighbor = vector[mid].first;
+            if( neighbor == key )
+            {
+                return vector[mid].second;
+            }
+            if( neighbor > key )
+            {
+                b = mid - 1;
+            }
+            else
+            {
+                a = mid + 1;
+            }
+        }
+        return std::numeric_limits<edge_id_t>::max();
+    }
+
+    /*
+     * Finds intersection of ne(node1) and ne(node2). Nodes in this intersection form 3-cliques/triangles with node1 and node2.
+     * Returns a vector of edge index pairs for edges (node1, node3) and (node2, node3) for each node3 in intersection.
+    */
+    inline std::vector< std::pair<edge_id_t,edge_id_t> > intersection( const std::unordered_map< node_id_t, std::vector< std::pair<node_id_t,edge_id_t> > >& node_neighborhoods, node_id_t node1, node_id_t node2 ) const
+    {
+        std::vector< std::pair<edge_id_t,edge_id_t> > intersection_edges;
+        for( const auto& neighbor : node_neighborhoods.at(node1) )
+        {
+            edge_id_t res = binary_search( node_neighborhoods.at(node2), neighbor.first ); // Returns std::numeric_limits::max() if neighbor was not found.
+            if( res < std::numeric_limits<edge_id_t>::max() )
+            {
+                intersection_edges.emplace_back( res, neighbor.second );
+            };
+        }
+        return intersection_edges;
+    }
+
 };
 
 // The ARACNE procedure.
