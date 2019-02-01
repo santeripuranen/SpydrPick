@@ -312,10 +312,10 @@ int main(int argc, char **argv)
 	steptimer.start();
 	if( SpydrPick_options::verbose() )
 	{
-		*SpydrPick_options::get_out_stream() << "SpydrPick: sort " << network->size() << " edges\n"; SpydrPick_options::get_out_stream()->flush();
+		*SpydrPick_options::get_out_stream() << "SpydrPick: sort " << network.network->size() << " edges\n"; SpydrPick_options::get_out_stream()->flush();
 	}
 
-	network->sort();
+	network.network->sort();
 
 	steptimer.stop();
 	if( SpydrPick_options::verbose() )
@@ -331,7 +331,7 @@ int main(int argc, char **argv)
 			*SpydrPick_options::get_out_stream() << "SpydrPick: run ARACNE\n"; SpydrPick_options::get_out_stream()->flush();
 		}
 
-		aracne::run_ARACNE( network );
+		aracne::run_ARACNE( network.network );
 
 		steptimer.stop();
 		if( SpydrPick_options::verbose() )
@@ -343,32 +343,63 @@ int main(int argc, char **argv)
 	// output final coupling scores
 	{
 		std::ostringstream extension;
-		extension << apegrunt::Apegrunt_options::get_output_indexing_base() << "-based"; // indicate base index
+		extension << apegrunt::Apegrunt_options::get_output_indexing_base() << "-based." << network.network->size() << "edges"; // indicate base index
 
 		// Ensure that we always get a unique output filename
-		auto couplings_file = apegrunt::get_unique_ofstream( alignments.front()->id_string()+"."+apegrunt::size_string(alignments.front())+(alignments.size() > 1 ? ".scan" : "")+".spydrpick_couplings."+extension.str()+".all" );
+		auto couplings_file = apegrunt::get_unique_ofstream( alignments.front()->id_string()+"."+apegrunt::size_string(alignments.front())+(alignments.size() > 1 ? ".scan" : "")+".spydrpick_couplings."+extension.str() );
 
 		if( couplings_file->stream()->is_open() && couplings_file->stream()->good() )
 		{
 			if( SpydrPick_options::verbose() )
 			{
-				*SpydrPick_options::get_out_stream() << "SpydrPick: write network (" << network->size() << " edges) to file \"" << couplings_file->name() << "\"\n";
+				*SpydrPick_options::get_out_stream() << "SpydrPick: write network (" << network.network->size() << " edges) to file \"" << couplings_file->name() << "\"\n";
 			}
 			cputimer.start();
 
 			// produce output
 			if( apegrunt::Apegrunt_options::linear_genome() )
 			{
-				*(couplings_file->stream()) << apegrunt::Graph_output_formatter<default_state_t,apegrunt::LinearDistance>(network,alignments.front());
+				*(couplings_file->stream()) << apegrunt::Graph_output_formatter<default_state_t,apegrunt::LinearDistance>(network.network,alignments.front());
 			}
 			else
 			{
-				*(couplings_file->stream()) << apegrunt::Graph_output_formatter<default_state_t,apegrunt::CircularDistance>(network,alignments.front());
+				*(couplings_file->stream()) << apegrunt::Graph_output_formatter<default_state_t,apegrunt::CircularDistance>(network.network,alignments.front());
 			}
 
 			cputimer.stop(); cputimer.print_timing_stats(); *SpydrPick_options::get_out_stream() << "\n";
 		}
 	}
+
+	// output outliers coupling scores
+	{
+		std::ostringstream extension;
+		extension << apegrunt::Apegrunt_options::get_output_indexing_base() << "-based." << "outliers"; // indicate base index
+
+		// Ensure that we always get a unique output filename
+		auto couplings_file = apegrunt::get_unique_ofstream( alignments.front()->id_string()+"."+apegrunt::size_string(alignments.front())+(alignments.size() > 1 ? ".scan" : "")+".spydrpick_couplings."+extension.str() );
+
+		if( couplings_file->stream()->is_open() && couplings_file->stream()->good() )
+		{
+			if( SpydrPick_options::verbose() )
+			{
+				*SpydrPick_options::get_out_stream() << "SpydrPick: write outlier network to file \"" << couplings_file->name() << "\"\n";
+			}
+			cputimer.start();
+
+			// produce output
+			if( apegrunt::Apegrunt_options::linear_genome() )
+			{
+				*(couplings_file->stream()) << Outlier_Graph_formatter<real_t,default_state_t,apegrunt::LinearDistance>(network,alignments.front());
+			}
+			else
+			{
+				*(couplings_file->stream()) << Outlier_Graph_formatter<real_t,default_state_t,apegrunt::CircularDistance>(network,alignments.front());
+			}
+
+			cputimer.stop(); cputimer.print_timing_stats(); *SpydrPick_options::get_out_stream() << "\n";
+		}
+	}
+
 
 	if( SpydrPick_options::verbose() )
 	{
