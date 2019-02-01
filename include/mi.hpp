@@ -37,12 +37,12 @@
 #include "misc/Matrix_kernel_access_order.hpp"
 #include "misc/Vector.h"
 
-#include "accumulators/distribution_std.hpp"
-#include "accumulators/distribution_bincount.hpp"
-#include "accumulators/distribution_ordered.hpp"
-#include "accumulators/distribution_cumulative.hpp"
+//#include "accumulators/distribution_std.hpp"
+//#include "accumulators/distribution_bincount.hpp"
+//#include "accumulators/distribution_ordered.hpp"
+//#include "accumulators/distribution_cumulative.hpp"
 //#include "accumulators/distribution_generator_svg.hpp"
-#include "accumulators/distribution_generator_csv.hpp"
+//#include "accumulators/distribution_generator_csv.hpp"
 
 #include "graph/Graph.hpp"
 
@@ -74,7 +74,6 @@ public:
 	mutual_information_block_kernel( apegrunt::Alignment_ptr<state_t> alignment, const std::shared_ptr< std::vector<real_t> > weights, real_t mi_threshold, real_t pseudocount=0.5 )
 	: m_alignment(alignment),
 	  m_weights(weights),
-	  //m_coincidence_block_kernel(alignment,weights,pseudocount),
 	  m_buffer( N*N*BlockSize ),
 	  m_mi_threshold(mi_threshold),
 	  m_pseudocount(pseudocount),
@@ -89,7 +88,6 @@ public:
 	mutual_information_block_kernel( const my_type& other )
 	: m_alignment( other.m_alignment ),
 	  m_weights( other.m_weights ),
-	  //m_coincidence_block_kernel( other.m_coincidence_block_kernel ),
 	  m_buffer( N*N*BlockSize ),
 	  m_mi_threshold( other.m_mi_threshold ),
 	  m_pseudocount( other.m_pseudocount ),
@@ -100,7 +98,7 @@ public:
 	  m_neff( other.m_neff )
 	{
 	}
-
+/*
 	// Calculates the mutual information (MI) for all iblock versus jblock data columns, producing a BlockSize-by-BlockSize dense solution matrix.
 	inline void operator()( dest_ptr_t mi_solution, std::size_t iblock, std::size_t jblock )
     {
@@ -127,9 +125,6 @@ public:
 
 		for( std::size_t icol=icol_begin, i=0; icol<icol_end; ++icol, ++i )
 		{
-// debug
-//			std::cout << "i=" << i << "\n";
-// debug end
 			// get the crosstable/coincidence matrix
 			auto kernel = apegrunt::weighted_coincidence_1Dblock<state_t,real_t>( m_alignment, m_weights, 0.0 );
 
@@ -158,40 +153,33 @@ public:
 			//this->mi( mi_solution+BlockSize*i, joint_H.data(), icond_H.data(), jcond_H.data(), jblock_size );
 			this->mi( mi_solution+i*jblock_size, joint_H.data(), icond_H.data(), jcond_H.data(), jblock_size );
 		}
-// debug
-//		exit(0);
-// debug end
     }
-
+*/
 	// Calculates the mutual information (MI) for all iblock versus jblock data columns, producing a BlockSize-by-BlockSize dense solution matrix.
-	inline void block( dest_ptr_t mi_solution, std::size_t iblock, std::size_t jblock )
+	inline void block( dest_ptr_t mi_solution, std::size_t iblock, std::size_t jblock, bool exclude_gaps=false )
     {
 		const std::size_t iblock_size = iblock == m_last_block_index ? m_last_block_size : BlockSize;
 		const std::size_t jblock_size = jblock == m_last_block_index ? m_last_block_size : BlockSize;
-		const std::size_t icol_begin = iblock*BlockSize;
-		const std::size_t icol_end = icol_begin+iblock_size;
+		const std::size_t ipos_begin = iblock*BlockSize;
+		const std::size_t ipos_end = ipos_begin+iblock_size;
 
 		std::vector<real_t> joint_H(iblock_size, 0.0);
 		std::vector<real_t> icond_H(iblock_size, 0.0);
 		std::vector<real_t> jcond_H(iblock_size, 0.0);
 
 		// get statecount tables
+/*
 		const auto statecount_blocks_ptr = m_alignment->get_statecount_blocks(); // keep shared_ptr alive
 		const auto& statecount_blocks = *statecount_blocks_ptr;
 		const auto& istatecounts = statecount_blocks[iblock];
 		const auto& jstatecounts = statecount_blocks[jblock];
-
+*/
 		// get statepresence tables
-		const auto statepresence_blocks_ptr = m_alignment->get_statepresence_blocks(); // keep shared_ptr alive
+		const auto statepresence_blocks_ptr = ( exclude_gaps ? m_alignment->get_statepresence_blocks_wo_gaps() : m_alignment->get_statepresence_blocks() ); // keep shared_ptr alive
 		const auto& statepresence_blocks = *statepresence_blocks_ptr;
 		const auto& istatepresence = statepresence_blocks[iblock];
 		const auto& jstatepresence = statepresence_blocks[jblock];
-/*
-		// block column intersections code
-		const auto& block_columns = *( m_alignment->get_block_accounting() );
-		const auto&& intersection = apegrunt::block_list_intersection( block_columns[iblock], block_columns[jblock] );
-		const auto&& intersection_weights = apegrunt::block_list_intersection_weights( intersection, *m_weights );
-*/
+
 		std::vector<real_t> block_level_buffer(N*N*BlockSize*BlockSize, 0.0);
 		// get the crosstable/coincidence matrix
 		auto kernel = apegrunt::weighted_coincidence_2Dblock<state_t,real_t>( m_alignment, m_weights, 0.0 );
@@ -199,13 +187,13 @@ public:
 		// the coincidence kernel collects a tall 1-by-iblock_size coincidence matrix (icol versus all columns in jblock).
 		kernel( block_level_buffer.data(), iblock, jblock );
 
-		for( std::size_t icol=icol_begin, i=0; icol<icol_end; ++icol, ++i )
+		for( std::size_t ipos=ipos_begin, i=0; ipos<ipos_end; ++ipos, ++i )
 		{
 			// normalize matrices, accounting for pseudocounts
-			this->normalize_and_get_jointH_icondH( block_level_buffer.data()+N*N*jblock_size*i, joint_H.data(), icond_H.data(), istatepresence[icol%BlockSize], jstatepresence, istatecounts[icol%BlockSize], jstatecounts, jblock_size );
+			this->normalize_and_get_jointH_icondH( block_level_buffer.data()+N*N*jblock_size*i, joint_H.data(), icond_H.data(), istatepresence[ipos%BlockSize], jstatepresence, jblock_size );
 
 			// given the 1-by-iblock_size coincidence matrix, calculate the conditional entropies H(j|i)
-			this->get_jCondH( block_level_buffer.data()+N*N*jblock_size*i, jcond_H.data(), istatepresence[icol%BlockSize], jstatepresence, jblock_size );
+			this->get_jCondH( block_level_buffer.data()+N*N*jblock_size*i, jcond_H.data(), istatepresence[ipos%BlockSize], jstatepresence, jblock_size );
 
 			// given the 1-by-iblock_size conditional and joint entropies, calculate MI as H(i,j) - H(i|j) - H(j|i)
 			//this->mi( mi_solution+BlockSize*i, joint_H.data(), icond_H.data(), jcond_H.data(), jblock_size );
@@ -215,27 +203,20 @@ public:
 
 	inline void single( dest_ptr_t mi_solution, std::size_t ipos, std::size_t jpos )
     {
-		//std::cout << "single: ipos=" << ipos << " jpos=" << jpos; std::cout.flush();
-
 		const std::size_t iblock = apegrunt::get_block_index(ipos);
 		const std::size_t jblock = apegrunt::get_block_index(jpos);
-		//const std::size_t jblock_size = jblock == m_last_block_index ? m_last_block_size : BlockSize;
-		//const std::size_t jblock_begin = jblock*BlockSize;
-		//const std::size_t jblock_end = jblock_begin+jblock_size;
 
 		real_t joint_H(0.0);
 		real_t icond_H(0.0);
 		real_t jcond_H(0.0);
-		//std::vector<real_t> joint_H(jblock_size, 0.0);
-		//std::vector<real_t> icond_H(jblock_size, 0.0);
-		//std::vector<real_t> jcond_H(jblock_size, 0.0);
 
 		// get statecount tables
+/*
 		const auto statecount_blocks_ptr = m_alignment->get_statecount_blocks(); // keep shared_ptr alive
 		const auto& statecount_blocks = *statecount_blocks_ptr;
 		const auto& istatecounts = statecount_blocks[iblock];
 		const auto& jstatecounts = statecount_blocks[jblock];
-
+*/
 		// get statepresence tables
 		const auto statepresence_blocks_ptr = m_alignment->get_statepresence_blocks(); // keep shared_ptr alive
 		const auto& statepresence_blocks = *statepresence_blocks_ptr;
@@ -248,49 +229,35 @@ public:
 		auto kernel = apegrunt::weighted_coincidence_2Dblock<state_t,real_t>( m_alignment, m_weights, 0.0 );
 
 		// the coincidence kernel collects a 1-by-1 coincidence matrix (ipos versus jpos).
-		//std::cout << " kernel.single"; std::cout.flush();
 		kernel.single( block_level_buffer.data(), ipos, jpos );
 
-		//std::cout << " normalize_and_get_jointH_icondH_single"; std::cout.flush();
 		this->normalize_and_get_jointH_icondH_single(
 				block_level_buffer.data(),
 				&joint_H, &icond_H,
-				istatepresence[ipos%BlockSize], jstatepresence[jpos%BlockSize],
-				istatecounts[ipos%BlockSize], jstatecounts[jpos%BlockSize]
-			);
+				istatepresence[ipos%BlockSize], jstatepresence[jpos%BlockSize]			);
 
 		// given the 1-by-1 coincidence matrix, calculate the conditional entropies H(j|i)
-		//std::cout << " get_jCondH_single"; std::cout.flush();
 		this->get_jCondH_single( block_level_buffer.data(), &jcond_H, istatepresence[ipos%BlockSize], jstatepresence[jpos%BlockSize] );
 
 		// given the 1-by-1 conditional and joint entropies, calculate MI as H(i,j) - H(i|j) - H(j|i)
-		//std::cout << " mi"; std::cout.flush();
 		this->mi( mi_solution, &joint_H, &icond_H, &jcond_H, 1 );
-		//std::cout << "=" << *(mi_solution) << std::endl;
     }
 
 	inline void normalize_and_get_jointH_icondH_single(
 			dest_ptr_t buffer, dest_ptr_t jointH, dest_ptr_t icondH,
-			statepresence_t ipresence, statepresence_t jpresence,
-			statecount_t istatecount, statecount_t jstatecount
-		)
+			statepresence_t ipresence, statepresence_t jpresence		)
 	{
 		const apegrunt::Vector<real_t,N> masked_pseudocount( m_pseudocount, ipresence );
 
 		real_t normconst(0);
 		for( std::size_t j=0; j < N; ++j )
 		{
-			//std::cout << apegrunt::make_Vector_view<real_t,N>( buffer + j*N, 1 ); // << "\n";
 			if( jpresence & (1<<j) )
 			{
-				//std::cout << " * ";
 				// add pseudocounts and collect row sums
 				normconst += apegrunt::mask_sum( apegrunt::make_Vector_view<real_t,N>( buffer + j*N, 1 ) += masked_pseudocount, ipresence );
-				//std::cout << apegrunt::make_Vector_view<real_t,N>( buffer + j*N, 1 );
 			}
-			//std::cout << "\n";
 		}
-		//std::cout << "normconst=" << normconst;
 		real_t sum(0);
 
 		real_t jointHsum(0), icondHsum(0);
@@ -308,7 +275,6 @@ public:
 		}
 		*(jointH) = jointHsum;
 		*(icondH) = icondHsum;
-		//std::cout << " sum=" << sum << std::endl;
 	}
 
 	inline void get_jCondH_single( dest_ptr_t /*should be src_ptr_t*/ buffer, dest_ptr_t jcondH, statepresence_t ipresence, statepresence_t jpresence )
@@ -329,7 +295,7 @@ public:
 		*(jcondH) = jcondHsum;
 	}
 
-	inline void normalize_and_get_jointH_icondH( dest_ptr_t /*should be src_ptr_t*/ buffer, dest_ptr_t jointH, dest_ptr_t icondH, statepresence_t ipresence, const statepresence_block_t& jpresence_block, statecount_t istatecount, const statecount_block_t& jstatecount_block, std::size_t extent )
+	inline void normalize_and_get_jointH_icondH( dest_ptr_t /*should be src_ptr_t*/ buffer, dest_ptr_t jointH, dest_ptr_t icondH, statepresence_t ipresence, const statepresence_block_t& jpresence_block, std::size_t extent )
 	{
 		// As the coincidence matrix is always N-by-N, the following function needs to use masking
 		// in order to add pseudocounts only to elements present in the crosstable/coincidence matrix.
@@ -361,7 +327,8 @@ public:
 					// normalize elements on row j and calculate sum( x * log(x) ) over elements indicated by ipresence mask
 					auto row_view = apegrunt::make_Vector_view<real_t,N>( buffer + AccessOrder::ptr_increment(j,i,extent), 1 );
 					jointHsum += apegrunt::mask_sum_xlogx( row_view /= normconst, ipresence );
-					icondHsum += apegrunt::xlogx( apegrunt::sum( row_view ) );
+					//icondHsum += apegrunt::xlogx( apegrunt::sum( row_view ) );
+					icondHsum += apegrunt::xlogx( apegrunt::mask_sum( row_view, ipresence ) );
 				}
 			}
 			*(jointH+i) = jointHsum;
@@ -423,13 +390,14 @@ public:
 		//const auto jmask = std::bitset<std::numeric_limits<statepresence_t>::digits>(ipresence);
 		for( std::size_t i=0; i < extent; ++i )
 		{
+			const auto jpresence = jpresence_block[i];
 			real_t jcondHsum(0);
 			for( std::size_t j=0; j < N; ++j )
 			{
 				if( ipresence & (1<<j) )
 				//if( jmask[j] )
 				{
-					jcondHsum += apegrunt::xlogx( apegrunt::sum( apegrunt::make_Vector_view<real_t,N>( buffer + AccessOrder::ptr_increment(0,i,extent)+j, AccessOrder::column_stride(extent) ) ) );
+					jcondHsum += apegrunt::xlogx( apegrunt::mask_sum( apegrunt::make_Vector_view<real_t,N>( buffer + AccessOrder::ptr_increment(0,i,extent)+j, AccessOrder::column_stride(extent) ), jpresence ) );
 				}
 			}
 			*(jcondH+i) = jcondHsum;
@@ -508,7 +476,7 @@ private:
 
 };
 
-template< typename RealT, typename StateT > //, typename OptimizerT >
+template< typename RealT, typename StateT >
 class MI_solver
 {
 public:
@@ -522,11 +490,12 @@ public:
 			real_t pseudocount=0.5
 	)
 	: m_mi_parameters( alignments, mi_threshold, pseudocount ),
-	  m_storage( apegrunt::make_Graph_ptr<apegrunt::Graph>() ), // empty network; private for each MI_solver instance
+	  m_stored_edges( apegrunt::make_Graph_ptr<apegrunt::Graph>() ), // empty network; private for each MI_solver instance
+	  m_stored_edges_wo_gaps( apegrunt::make_Graph_ptr<apegrunt::Graph>() ), // empty network; private for each MI_solver instance
 	  m_mi_block_kernel( alignments.front(), m_mi_parameters.get_weights(), mi_threshold, pseudocount ),
 	  m_cputimer( SpydrPick_options::verbose() ? SpydrPick_options::get_out_stream() : nullptr ),
 	  m_solution( apegrunt::StateBlock_size*apegrunt::StateBlock_size, 0 ),
-	  m_mi_distribution( acc::tag::distribution::binwidth=0.0001 ),
+	  //m_mi_distribution( acc::tag::distribution::binwidth=0.0001 ),
 	  m_colmax( alignments.front()->n_loci() )
 	  //m_loci_slice( loci_slice )
 	{
@@ -542,12 +511,13 @@ public:
 
 	MI_solver( MI_solver<real_t,state_t>&& other )
     : m_mi_parameters( other.m_mi_parameters ),
-	  m_storage( apegrunt::make_Graph_ptr<apegrunt::Graph>() ), // empty network; private for each MI_solver instance
+	  m_stored_edges( apegrunt::make_Graph_ptr<apegrunt::Graph>() ), // empty network; private for each MI_solver instance
+	  m_stored_edges_wo_gaps( apegrunt::make_Graph_ptr<apegrunt::Graph>() ), // empty network; private for each MI_solver instance
 	  //m_storage( other.m_storage ),
 	  m_mi_block_kernel( other.m_mi_block_kernel ),
 	  m_cputimer( other.m_cputimer ),
 	  m_solution( other.m_solution.size(), 0 ), // each instance has its own private solution buffer
-	  m_mi_distribution( acc::tag::distribution::binwidth=0.0001 ), // each instance has its own private accumulator
+	  //m_mi_distribution( acc::tag::distribution::binwidth=0.0001 ), // each instance has its own private accumulator
 	  m_colmax( other.m_colmax.size() ), // each instance has its own private accumulator
 	  m_distance( other.m_distance )
 	  //m_loci_slice( std::move( other.m_loci_slice ) )
@@ -558,12 +528,13 @@ public:
 	template< typename TBBSplitT >
 	MI_solver( MI_solver<real_t,state_t>& other, TBBSplitT s )
     : m_mi_parameters( other.m_mi_parameters ),
-	  m_storage( apegrunt::make_Graph_ptr<apegrunt::Graph>() ), // empty network; private for each MI_solver instance
+	  m_stored_edges( apegrunt::make_Graph_ptr<apegrunt::Graph>() ), // empty network; private for each MI_solver instance
+	  m_stored_edges_wo_gaps( apegrunt::make_Graph_ptr<apegrunt::Graph>() ), // empty network; private for each MI_solver instance
 	  //m_storage( other.m_storage ),
 	  m_mi_block_kernel( other.m_mi_block_kernel ),
 	  m_cputimer( other.m_cputimer ),
 	  m_solution( other.m_solution.size(), 0 ), // each instance has its own private solution vector
-	  m_mi_distribution( acc::tag::distribution::binwidth=0.0001 ), // each instance has its own private accumulator
+	  //m_mi_distribution( acc::tag::distribution::binwidth=0.0001 ), // each instance has its own private accumulator
 	  m_colmax( other.m_colmax.size() ), // each instance has its own private accumulator
 	  m_distance( other.m_distance )
 	  //m_loci_slice( other.m_loci_slice )
@@ -574,12 +545,14 @@ public:
 	// TBB interface (required by tbb::parallel_reduce Body)
 	void join( MI_solver<real_t,state_t>& rhs )
 	{
-		m_storage->join( *(rhs.m_storage) );
+		m_stored_edges->join( *(rhs.m_stored_edges) );
+		m_stored_edges_wo_gaps->join( *(rhs.m_stored_edges_wo_gaps) );
 		// m_mi_distribution.join( rhs.m_mi_distribution ); // accumulator joining not implemented yet
 		m_colmax.join( rhs.m_colmax );
 	}
 
-	inline apegrunt::Graph_ptr get_graph() const { return m_storage; }
+	inline apegrunt::Graph_ptr get_graph() const { return m_stored_edges; }
+	inline apegrunt::Graph_ptr get_graph_wo_gaps() const { return m_stored_edges_wo_gaps; }
 
 	// Calculate MIs for a pair of positions.
 	inline real_t single( std::size_t ipos, std::size_t jpos )
@@ -590,14 +563,13 @@ public:
 	}
 
 	inline maxvaltracker<real_t>& get_quartiles() { return m_colmax; }
-
+/*
 	// Calculate MIs for a single position against a block of positions. Self interactions are included.
 	inline void operator()( std::size_t icol, std::size_t jblock, bool exclude_selfinteraction=true )
 	{
 		const std::size_t iblock = apegrunt::get_block_index(icol);
 		const std::size_t n_loci = m_mi_parameters.get_alignment()->n_loci(); // cache the number of loci
-		auto& storage = *m_storage;
-		std::size_t delta = storage.size();
+		auto& stored_edges = *m_stored_edges;
 
 		m_cputimer.start();
 		const auto jblock_size = jblock == m_mi_parameters.get_last_block_index() ? m_mi_parameters.get_last_block_size() : m_mi_parameters.get_n_loci_per_block();
@@ -611,7 +583,8 @@ public:
 
 		// lock shared storage for thread safety
 		//const auto&& scoped_lock = m_storage->acquire_lock(); // lock will expire once out of scope
-		storage.lock();
+		stored_edges.lock(); // do the explicit thing instead, because why not?
+		std::size_t edges_added = stored_edges.size();
 		// store solutions
 		if( iblock == jblock && exclude_selfinteraction )
 		{
@@ -625,7 +598,7 @@ public:
 					// Store all solutions that exceed threshold
 					if( threshold < mi )
 					{
-						storage.add( icol, jblock*apegrunt::StateBlock_size+i, mi );
+						stored_edges.add( icol, jblock*apegrunt::StateBlock_size+i, mi );
 					}
 				}
 			}
@@ -639,14 +612,12 @@ public:
 				//std::cout << " " << mi;
 				if( threshold < mi )
 				{
-					storage.add( icol, jblock*apegrunt::StateBlock_size+i, mi );
+					stored_edges.add( icol, jblock*apegrunt::StateBlock_size+i, mi );
 				}
 			}
 		}
-		storage.unlock();
-
-		delta = storage.size() - delta;
-		//std::cout << " delta=" << delta << "\n" << std::endl;
+		edges_added = stored_edges.size() - edges_added;
+		stored_edges.unlock();
 
 		m_cputimer.stop();
 
@@ -661,47 +632,45 @@ public:
 			*SpydrPick_options::get_out_stream() << oss.str();
 		}
 	}
-
+*/
 	// Calculate MIs for a range of blocks against all other blocks in an upper triangular matrix. Self interactions are excluded.
 	template< typename RangeT >
     inline void operator()( const RangeT& block_index_range )
     {
 		const std::size_t n_loci = m_mi_parameters.get_alignment()->n_loci(); // cache the number of loci
-		//const auto& index_translation = *(m_mi_parameters.get_alignment()->get_loci_translation());
-		//const auto ld_threshold = m_mi_parameters.get_alignment()->get_mi_ld_threshold();
+		const auto gappresence_blocks_ptr = m_mi_parameters.get_alignment()->get_gappresence_blocks(); // keep shared_ptr alive
+		const auto& gappresence_blocks = *gappresence_blocks_ptr;
 
-		auto& storage = *m_storage;
-		std::size_t delta = storage.size();
-/*
-		std::function<std::size_t(std::size_t,std::size_t)> distance;
-		if( apegrunt::Apegrunt_options::linear_genome() )
-		{
-			distance = apegrunt::GenomeDistance<apegrunt::LinearDistance>( m_mi_parameters.get_alignment() );
-		}
-		else
-		{
-			distance = apegrunt::GenomeDistance<apegrunt::CircularDistance>( m_mi_parameters.get_alignment() );
-		}
-*/
+		auto& stored_edges = *m_stored_edges;
+		std::size_t edges_added = stored_edges.size();
+
 		for( const auto iblock: block_index_range )
 		{
 			m_cputimer.start();
 			const auto iblock_size = iblock == m_mi_parameters.get_last_block_index() ? m_mi_parameters.get_last_block_size() : m_mi_parameters.get_n_loci_per_block();
 			const auto threshold = m_mi_parameters.threshold();
+			const auto& igappresence = gappresence_blocks[iblock];
+			const bool iblock_has_gaps = apegrunt::popcnt( igappresence );
 
 			// symmetric matrix; compute upper triangular block matrices
 			for( std::size_t jblock = iblock; jblock < apegrunt::get_number_of_blocks(n_loci); ++jblock )
 			{
 				// reset local solution buffer
 				for( auto& e: m_solution ) { e = 0.0; }
+
+				const auto& jgappresence = gappresence_blocks[jblock];
+				const bool jblock_has_gaps = apegrunt::popcnt( jgappresence );
+
 				// calculate mutual information for all iblock versus jblock data columns
-				//m_mi_block_kernel( m_solution.data(), iblock, jblock ); // calculate MI values in 16-by-16 blocks
 				m_mi_block_kernel.block( m_solution.data(), iblock, jblock ); // calculate MI values in 16-by-16 blocks
 				const auto jblock_size = jblock == m_mi_parameters.get_last_block_index() ? m_mi_parameters.get_last_block_size() : m_mi_parameters.get_n_loci_per_block();
 
+				std::vector< std::pair<std::size_t,std::size_t> > stored_edges_internal; stored_edges_internal.reserve( iblock_size*jblock_size );
+
 				// lock shared storage for thread safety
 				//const auto&& scoped_lock = m_storage->acquire_lock(); // lock will expire once out of scope
-				storage.lock();
+				stored_edges.lock(); // lock
+				std::size_t delta = stored_edges.size();
 				// store solutions
 				if( iblock == jblock ) // blocks on the diagonal
 				{
@@ -721,7 +690,8 @@ public:
 							// Store all solutions that exceed threshold
 							if( threshold < mi )
 							{
-								storage.add( ipos, jpos, mi );
+								stored_edges.add( ipos, jpos, mi );
+								if( igappresence[i] || jgappresence[j] ) { stored_edges_internal.emplace_back(i,j); }
 							}
 						}
 					}
@@ -744,15 +714,75 @@ public:
 							// Store all solutions that exceed threshold
 							if( threshold < mi )
 							{
-								storage.add( ipos, jpos, mi );
+								stored_edges.add( ipos, jpos, mi );
+								if( igappresence[i] || jgappresence[j] ) { stored_edges_internal.emplace_back(i,j); }
 							}
 						}
 					}
 				}
-				storage.unlock();
+				delta = stored_edges.size() - delta;
+				stored_edges.unlock(); // explicit unlock
+
+				{
+					// if we've stored MIs and the active node blocks contain gaps, then re-evaluate edges while excluding the gap contribution
+					//if( delta != 0 && (iblock_has_gaps || jblock_has_gaps) )
+					if( stored_edges_internal.size() != 0 )
+					{
+						// reset local solution buffer
+						for( auto& e: m_solution ) { e = 0.0; }
+						// calculate MI values in 16-by-16 blocks; rather wasteful, but then again, the single MI kernel is also slow
+						m_mi_block_kernel.block( m_solution.data(), iblock, jblock, true ); // exclude the gap contribution
+
+						m_stored_edges_wo_gaps->lock();
+						for( const auto& pair: stored_edges_internal )
+						{
+							const auto i = pair.first;
+							const auto j = pair.second;
+							const auto ipos = iblock*apegrunt::StateBlock_size+i;
+							const auto jpos = jblock*apegrunt::StateBlock_size+j;
+							const auto mi = *(m_solution.data()+jblock_size*i+j);
+							m_stored_edges_wo_gaps->add( ipos, jpos, mi );
+						}
+/*
+						if( iblock == jblock ) // blocks on the diagonal
+						{
+							for( std::size_t i = 0; i < iblock_size; ++i )
+							{
+								const auto ipos = iblock*apegrunt::StateBlock_size+i;
+								for( std::size_t j = i+1; j < jblock_size; ++j ) // j = i would be on the diagonal, hence j = i+1
+								{
+									if( igappresence[i] || jgappresence[j] )
+									{
+										const auto jpos = jblock*apegrunt::StateBlock_size+j;
+										const auto mi = *(m_solution.data()+jblock_size*i+j);
+										m_stored_edges_wo_gaps->add( ipos, jpos, mi );
+									}
+								}
+							}
+						}
+						else
+						{
+							for( std::size_t i = 0; i < iblock_size; ++i )
+							{
+								const auto ipos = iblock*apegrunt::StateBlock_size+i;
+								for( std::size_t j = 0; j < jblock_size; ++j )
+								{
+									if( igappresence[i] || jgappresence[j] )
+									{
+										const auto jpos = jblock*apegrunt::StateBlock_size+j;
+										const auto mi = *(m_solution.data()+jblock_size*i+j);
+										m_stored_edges_wo_gaps->add( ipos, jpos, mi );
+									}
+								}
+							}
+						}
+*/
+						m_stored_edges_wo_gaps->unlock();
+					}
+				}
 			}
 
-			delta = storage.size() - delta;
+			edges_added = stored_edges.size() - edges_added;
 
 			m_cputimer.stop();
 
@@ -763,7 +793,7 @@ public:
 				// buffer output in a ss before committing it to the ostream,
 				// in order to keep output clean when run in multi-threaded mode.
 				std::ostringstream oss;
-				oss << "  " << col_begin << "-" << col_end << " / " << n_loci << " (" << delta << " new edges) time=" << m_cputimer << "\n";
+				oss << "  " << col_begin << "-" << col_end << " / " << n_loci << " (" << edges_added << " new edges) time=" << m_cputimer << "\n";
 				*SpydrPick_options::get_out_stream() << oss.str();
 			}
 		}
@@ -771,7 +801,9 @@ public:
 
 private:
 	mi_parameters_t m_mi_parameters;
-	apegrunt::Graph_ptr m_storage;
+	apegrunt::Graph_ptr m_stored_edges;
+	apegrunt::Graph_ptr m_stored_edges_wo_gaps;
+
 	mutual_information_block_kernel<state_t, real_t> m_mi_block_kernel;
 	stopwatch::stopwatch m_cputimer; // for timing statistics
 
@@ -780,7 +812,7 @@ private:
 	maxvaltracker<real_t> m_colmax;
 	std::function<std::size_t(std::size_t,std::size_t)> m_distance;
 
-	acc::accumulator_set<real_t, acc::stats<acc::tag::std(acc::from_distribution),acc::tag::distribution_bincount> > m_mi_distribution;
+	//acc::accumulator_set<real_t, acc::stats<acc::tag::std(acc::from_distribution),acc::tag::distribution_bincount> > m_mi_distribution;
 };
 
 template< typename RealT, typename StateT >
@@ -789,7 +821,7 @@ MI_solver<RealT,StateT> get_MI_solver(
 	//apegrunt::Graph_ptr storage,
 	RealT mi_threshold,
 	RealT pseudocount
-) { return MI_solver<RealT,StateT>( alignments, /*storage,*/ mi_threshold, pseudocount ); }
+) { return MI_solver<RealT,StateT>( alignments, mi_threshold, pseudocount ); }
 
 } // namespace spydrpick
 
