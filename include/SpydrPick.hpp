@@ -45,6 +45,7 @@
 #include "apegrunt/StateVector_utility.hpp"
 #include "apegrunt/Alignment_utility.hpp"
 #include "apegrunt/Loci.h"
+#include "apegrunt/Distance.hpp"
 
 #include "misc/Matrix_math.hpp" // apegrunt
 
@@ -55,8 +56,104 @@
 
 namespace spydrpick {
 
+template< typename RealT >
+struct MI_network
+{
+	using real_t = RealT;
+
+	apegrunt::Graph_ptr network;
+	apegrunt::Graph_ptr network_wo_gaps;
+	real_t outlier_threshold;
+	real_t extreme_outlier_threshold;
+};
+
+template< typename RealT, typename StateT, typename DistanceT=apegrunt::LinearDistance >
+struct Outlier_Graph_formatter
+{
+	Outlier_Graph_formatter( MI_network<RealT>& graph, const apegrunt::Alignment_ptr<StateT>& alignment ) //, std::size_t (*	const distance)(std::size_t,std::size_t) )
+	: m_graph(graph),
+	  m_alignment(alignment),
+	  m_distance(alignment->n_original_positions())
+	{
+/*
+		for( std::size_t i=0; i < 10; ++i )
+		{
+			std::cout << i << " [" << (*m_graph.network_wo_gaps)[i].id().id() << "]" << std::endl;
+		}
+		std::cout << "sort" << std::endl;
+*/
+		m_graph.network_wo_gaps->sort( []( const auto& a, const auto& b ) { return a.id() < b.id(); } );
+/*
+		for( std::size_t i=0; i < 10; ++i )
+		{
+			std::cout << i << " [" << (*m_graph.network_wo_gaps)[i].id().id() << "]" << std::endl;
+		}
+*/
+	}
+
+	inline std::size_t distance( std::size_t pos1, std::size_t pos2 ) const
+	{
+		return m_distance(pos1,pos2);
+	}
+	MI_network<RealT> m_graph;
+	const apegrunt::Alignment_ptr<StateT> m_alignment;
+	DistanceT m_distance;
+};
+
+template< typename RealT, typename StateT, typename Distance >
+static std::ostream& operator<< ( std::ostream& os, const Outlier_Graph_formatter<RealT,StateT,Distance>& ogf )
+{
+	//using std::begin; using std::end;
+	//using apegrunt::begin; using apegrunt::end;
+
+	const auto& index_translation = *(ogf.m_alignment->get_loci_translation());
+	const std::size_t base_index = apegrunt::Apegrunt_options::get_output_indexing_base();
+	const auto outlier_threshold = ogf.m_graph.outlier_threshold;
+	const auto extreme_outlier_threshold = ogf.m_graph.extreme_outlier_threshold;
+
+	//std::cout << "graph_wo_gaps.size()=" << ogf.m_graph.network_wo_gaps->size() << std::endl;
+	//std::cout << *ogf.m_graph.network_wo_gaps << std::endl;
+
+	for( const auto& edge: *(ogf.m_graph.network) )
+	{
+		if( edge.weight() < outlier_threshold )
+		{
+			break;
+		}
+		else
+		{
+			//const auto outlier_edge = std::find( begin(*(ogf.m_graph.network_wo_gaps)), end(*(ogf.m_graph.network_wo_gaps)), edge );
+			//auto weight_wo_gaps = outlier_edge != end(*(ogf.m_graph.network_wo_gaps)) ? outlier_edge->weight() : edge.weight();
+
+			const auto outlier_edge = ogf.m_graph.network_wo_gaps->find(edge); // will return either an edge_t* or nullptr
+			auto weight_wo_gaps = outlier_edge != ogf.m_graph.network_wo_gaps->end() ? outlier_edge->weight() : edge.weight();
+/*
+			if( outlier_edge != ogf.m_graph.network_wo_gaps->end() )
+			{
+				std::cout << "Found edge_wo_gaps=[" << *outlier_edge << "]" << std::endl;
+			}
+*/
+			//std::cout << "edge=[" << edge << "] edge_wo_gaps=[" << ( outlier_edge != ogf.m_graph.network_wo_gaps->end() ? *outlier_edge : apegrunt::Edge(0,0,0) ) << "]" << std::endl;
+
+			const auto index1 = index_translation[edge.node1()]+base_index;
+			const auto index2 = index_translation[edge.node2()]+base_index;
+
+			os << index1 << " " << index2
+					<< " " << ogf.distance(index1,index2)
+					<< " " << bool(edge)
+					<< std::fixed << std::setprecision(6)
+					<< " " << edge.weight()
+					<< " " << weight_wo_gaps
+					<< " " << std::setprecision(1) << ( 1.0 - ( weight_wo_gaps / edge.weight() ) ) * 100
+					<< " " << bool(edge.weight() > extreme_outlier_threshold)
+					<< "\n";
+		}
+	}
+	return os;
+}
+
 template< typename RealT, typename StateT >
-apegrunt::Graph_ptr get_MI_network( std::vector< apegrunt::Alignment_ptr<StateT> >& alignments, RealT mi_threshold=0.0 )
+MI_network<RealT> get_MI_network( std::vector< apegrunt::Alignment_ptr<StateT> >& alignments, RealT mi_threshold=0.0 )
 {
 	using state_t = StateT;
 	using apegrunt::cbegin; using apegrunt::cend;
@@ -85,8 +182,13 @@ apegrunt::Graph_ptr get_MI_network( std::vector< apegrunt::Alignment_ptr<StateT>
 			<< "SpydrPick: extreme outlier threshold=" << extreme_outlier_threshold << "\n";
 	}
 
+	MI_network<RealT> network;
+	network.network = mi_solver.get_graph();
+	network.network_wo_gaps = mi_solver.get_graph_wo_gaps();
+	network.outlier_threshold = outlier_threshold;
+	network.extreme_outlier_threshold = extreme_outlier_threshold;
 
-	return mi_solver.get_graph();
+	return network;
 }
 
 template< typename NodeT >
