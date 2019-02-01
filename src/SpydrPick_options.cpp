@@ -1,6 +1,6 @@
 /** @file SpydrPick_options.cpp
 
-	Copyright (c) 2017-2018 Santeri Puranen.
+	Copyright (c) 2017-2019 Santeri Puranen.
 
 	This program is free software: you can redistribute it and/or modify
 	it under the terms of the GNU Affero General Public License as
@@ -45,7 +45,7 @@ bool SpydrPick_options::s_no_aracne = false;
 std::string SpydrPick_options::s_options_string;
 
 const std::string SpydrPick_options::s_title_string(
-	  std::string("SpydrPick: Genome-wide epistasis analysis with MI-ARACNE.\n")
+	  std::string("SpydrPick: MI-ARACNE genome-wide co-evolution analysis.\n")
 );
 
 const std::string SpydrPick_options::s_usage_string(
@@ -71,7 +71,7 @@ const std::string SpydrPick_options::s_version_string(
 );
 
 const std::string SpydrPick_options::s_copyright_notice(
-	std::string("Copyright (c) 2018-2019 Santeri Puranen\nLicensed under the GNU Affero General Public License version 3.\n\n")
+	std::string("Copyright (c) 2018-2019 Santeri Puranen and Juri Kuronen\nLicensed under the GNU Affero General Public License version 3.\n\n")
 	+ "THIS SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND."
 );
 
