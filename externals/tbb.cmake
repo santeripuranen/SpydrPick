@@ -2,6 +2,15 @@
 
 cmake_minimum_required(VERSION 3.1)
 
+# for TBB_ROOT if cmake >= 3.12
+foreach(policy
+    CMP0074 # CMake 3.12
+    )
+  if(POLICY ${policy})
+    cmake_policy(SET ${policy} NEW)
+  endif()
+endforeach()
+
 #option( ${CMAKE_PROJECT_NAME}_ENABLE_TBB "Find TBB and, if successful, enable use in ${CMAKE_PROJECT_NAME}" true )
 
 ##############
