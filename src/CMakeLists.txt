@@ -81,8 +81,10 @@ if( NOT SPYDRPICK_NO_TBB )
 	target_link_libraries( aracne ${TBB_LIBRARIES} )
 endif()
 
-# Add pthreads library if building in UNIX
+# Add rt and pthreads library if building in UNIX
 if( UNIX )
+	target_link_libraries( SpydrPick rt )
+	target_link_libraries( aracne rt )
 	target_link_libraries( SpydrPick pthread )
 	target_link_libraries( aracne pthread )
 endif( UNIX )
