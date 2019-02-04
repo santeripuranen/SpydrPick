@@ -1,6 +1,6 @@
 /** @file aracne.hpp
 
-	Copyright (c) 2018-2019 Juri Kuronen and Santeri Puranen.
+	Copyright (c) 2018 Juri Kuronen and Santeri Puranen.
 
 	This program is free software: you can redistribute it and/or modify
 	it under the terms of the GNU Affero General Public License as
@@ -38,6 +38,7 @@
 #include "tbb/parallel_for.h"
 #include "tbb/parallel_for_each.h"
 #include "tbb/blocked_range.h" // should be included by parallel_for.h
+#include "tbb/concurrent_unordered_map.h"
 //#include "tbb/mutex.h"
 #endif // SPYDRPICK_NO_TBB
 
@@ -47,49 +48,45 @@
 
 namespace aracne {
 
-// Initializes keys for maps for later parallel access.
-template< typename NodeIdT, typename EdgeIdT >
-void initialize_node_mtx_and_neighborhoods( apegrunt::Graph_ptr network, std::unordered_map< NodeIdT, std::shared_ptr<std::mutex> >& node_mtx, std::unordered_map< NodeIdT, std::vector< std::pair<NodeIdT,EdgeIdT> > >& node_neighborhoods )
+// Remap input graph and initialize necessary data structures.
+template< typename NodeIdT, typename EdgeIdT, typename RealT >
+apegrunt::Graph_ptr remap_and_initialize( const apegrunt::Graph_ptr network, std::vector< std::vector< std::pair<NodeIdT,EdgeIdT> > >& node_neighborhoods, std::vector< std::shared_ptr<std::mutex> >& node_mtx, std::unordered_map<NodeIdT,NodeIdT>& node_map)
 {
     using node_id_t = NodeIdT;
     using edge_id_t = EdgeIdT;
+    using real_t = RealT;
     const std::uint32_t node_mtx_grouping_size = aracne::ARACNE_options::node_grouping_size();
+
+    apegrunt::Graph_ptr remapped_network = apegrunt::make_Graph_ptr<apegrunt::Graph>();
+    node_id_t size_counter = 0;
+
     for( const auto& edge : *network )
     {
         node_id_t node1 = edge.node1();
         node_id_t node2 = edge.node2();
-        if( node_neighborhoods.count(node1) == 0)
-        {
-            node_neighborhoods[node1] = std::vector< std::pair<node_id_t,edge_id_t> >(); // Default-initialize.
+        real_t mi = edge.weight();
+
+        if( node_map.count(node1) == 0) { 
+            node_map[node1] = size_counter++;
+            node_neighborhoods.emplace_back(); // Default-initialize.
+            node_neighborhoods.back().reserve(128);
         }
-        if( node_neighborhoods.count(node2) == 0)
-        {
-            node_neighborhoods[node2] = std::vector< std::pair<node_id_t,edge_id_t> >(); // Default-initialize.
-        }
-        if( node_mtx.count(node1 / node_mtx_grouping_size) == 0)
-        {
-            node_mtx.emplace( node1 / node_mtx_grouping_size, new std::mutex );
-        }
-        if( node_mtx.count(node2 / node_mtx_grouping_size) == 0)
-        {
-            node_mtx.emplace( node2 / node_mtx_grouping_size, new std::mutex );
+        if( node_map.count(node2) == 0) { 
+            node_map[node2] = size_counter++;
+            node_neighborhoods.emplace_back(); // Default-initialize.
+            node_neighborhoods.back().reserve(128);
         }
 
+        remapped_network->add( node_map[node1], node_map[node2], mi );
     }
-}
 
-// Condenses information about processed edges into an easily accessible map.
-template< typename NodeIdT >
-std::unordered_map<NodeIdT,NodeIdT> create_processed_nodes_map( const std::vector< std::pair<NodeIdT,NodeIdT> >& processed_edges )
-{
-    using node_id_t = NodeIdT;
-    std::unordered_map<node_id_t,node_id_t> processed_nodes;
-    for( auto processed_edge : processed_edges )
+    // Initialize mutexes.
+    for( std::size_t mtx = 0; mtx < size_counter; mtx += node_mtx_grouping_size )
     {
-        ++processed_nodes[processed_edge.first];
-        ++processed_nodes[processed_edge.second];
+        node_mtx.emplace_back(new std::mutex);
     }
-    return processed_nodes;
+
+    return remapped_network;
 }
 
 template< typename NodeIdT, typename EdgeIdT >
@@ -99,7 +96,7 @@ public:
     using node_id_t = NodeIdT;
     using edge_id_t = EdgeIdT;
 
-    block_reader( apegrunt::Graph_ptr network, std::unordered_map< node_id_t, std::vector< std::pair<node_id_t,edge_id_t> > >& node_neighborhoods, std::unordered_map< node_id_t, std::shared_ptr<std::mutex> >& node_mtx, std::vector< std::pair<node_id_t,node_id_t> >& processed_edges, std::size_t block_start )
+    block_reader( apegrunt::Graph_ptr network, std::vector< std::vector< std::pair<node_id_t,edge_id_t> > >& node_neighborhoods, std::vector< std::shared_ptr<std::mutex> >& node_mtx, std::vector< std::pair<node_id_t,node_id_t> >& processed_edges, std::size_t block_start )
     : m_network(network),
       m_node_neighborhoods(node_neighborhoods),
       m_node_mtx(node_mtx),
@@ -108,22 +105,24 @@ public:
       m_node_mtx_grouping_size(aracne::ARACNE_options::node_grouping_size())
     { }
 
+    #ifndef SPYDRPICK_NO_TBB
     // Read next block of edges into neighborhood vector. Trusts that network contains no duplicate edges.
     inline void operator()( tbb::blocked_range<std::size_t>& r ) const
     {
         for( auto idx = r.begin(); idx < r.end(); ++idx ) { read_edge( idx ); }
     }
-
+    #else
     // Read next block of edges into neighborhood vector. Trusts that network contains no duplicate edges. Non-TBB implementation.
     inline void operator()( std::size_t block_start, std::size_t block_end ) const
     {
         for( auto idx = block_start; idx < block_end; ++idx ) { read_edge( idx ); }
     }
+    #endif // #ifndef SPYDR_NO_TBB
 
 private:
     apegrunt::Graph_ptr m_network;
-    std::unordered_map< node_id_t, std::shared_ptr<std::mutex> >& m_node_mtx;
-    std::unordered_map< node_id_t, std::vector< std::pair<node_id_t,edge_id_t> > >& m_node_neighborhoods;
+    std::vector< std::shared_ptr<std::mutex> >& m_node_mtx;
+    std::vector< std::vector< std::pair<node_id_t,edge_id_t> > >& m_node_neighborhoods;
     std::vector< std::pair<node_id_t,node_id_t> >& m_processed_edges;
     std::size_t m_block_start;
     uint32_t m_node_mtx_grouping_size;
@@ -150,33 +149,86 @@ private:
 
 };
 
+// Condenses information about processed edges into an easily accessible map.
+template< typename NodeIdT >
+class processed_nodes_mapper
+{
+public:
+
+    using node_id_t = NodeIdT;
+    
+    processed_nodes_mapper( const std::vector< std::pair<node_id_t,node_id_t> >& processed_edges, tbb::concurrent_unordered_map<node_id_t,node_id_t>& processed_nodes ) : m_processed_edges(processed_edges), m_processed_nodes(processed_nodes) { }
+
+    #ifndef SPYDRPICK_NO_TBB
+    void operator()( tbb::blocked_range<std::size_t>& r ) const
+    {
+        for( auto processed_edge_idx = r.begin(); processed_edge_idx < r.end(); ++processed_edge_idx ) { process_edge( m_processed_edges[processed_edge_idx] ); }
+    }
+    #else
+    void operator()( std::size_t begin, std::size_t end ) const
+    {
+        for( auto processed_edge_idx = begin; processed_edge_idx < end; ++processed_edge_idx ) { process_edge( m_processed_edges[processed_edge_idx] ); }
+    }
+    #endif // #ifndef SPYDRPICK_NO_TBB
+
+    std::vector< std::pair<node_id_t,node_id_t> > get_processed_nodes_vector()
+    {
+        std::vector< std::pair<node_id_t,node_id_t> > processed_nodes_vector;
+        processed_nodes_vector.reserve(m_processed_nodes.size());
+        for( auto processed_node : m_processed_nodes )
+        {
+            processed_nodes_vector.emplace_back(processed_node);
+        }
+        return processed_nodes_vector;
+    }
+
+private:
+    const std::vector< std::pair<node_id_t,node_id_t> >& m_processed_edges;
+    tbb::concurrent_unordered_map<node_id_t,node_id_t>& m_processed_nodes; // Default-initializes.
+
+    inline void process_edge( std::pair<node_id_t,node_id_t> processed_edge ) const
+    {
+        ++m_processed_nodes[processed_edge.first];
+        ++m_processed_nodes[processed_edge.second];
+    }
+
+};
+
 template< typename NodeIdT, typename EdgeIdT >
 class block_sorter
 {
 public:
     using node_id_t = NodeIdT;
     using edge_id_t = EdgeIdT;
-    using const_itr_t = typename std::unordered_map<node_id_t,node_id_t>::const_iterator;
 
-    block_sorter( std::unordered_map< node_id_t, std::vector< std::pair<node_id_t,edge_id_t> > >& node_neighborhoods, const std::unordered_map<node_id_t,node_id_t>& processed_nodes )
+    block_sorter( std::vector< std::vector< std::pair<node_id_t,edge_id_t> > >& node_neighborhoods, const std::vector< std::pair<node_id_t,node_id_t> >& processed_nodes )
     : m_node_neighborhoods(node_neighborhoods),
       m_processed_nodes(processed_nodes)
     { }
 
     // Re-sorts node neighborhood after new block of edges was added.
-    inline void operator()( std::pair<node_id_t,node_id_t> processed_node ) const
+    #ifndef SPYDRPICK_NO_TBB
+    inline void operator()( tbb::blocked_range<std::size_t>& r ) const
+    {
+        for( auto idx = r.begin(); idx < r.end(); ++idx) { process_node(m_processed_nodes[idx]); }
+    }
+    #else
+    inline void operator()( std::size_t start, std::size_t end ) const
+    {
+        for( auto idx = start; idx < end; ++idx) { process_node(m_processed_nodes[idx]); }
+    }
+    #endif // #ifndef SPYDRPICK_NO_TBB
+
+private:
+    std::vector< std::vector< std::pair<node_id_t,edge_id_t> > >& m_node_neighborhoods;
+    const std::vector< std::pair<node_id_t,node_id_t> >& m_processed_nodes;
+
+    inline void process_node( std::pair<node_id_t,node_id_t> processed_node ) const
     {
         node_id_t node = processed_node.first;
         node_id_t new_elements = processed_node.second;
         custom_sort( m_node_neighborhoods[node], new_elements );
     }
-
-    inline const_itr_t begin() const { return std::begin(m_processed_nodes); }
-    inline const_itr_t end() const { return std::end(m_processed_nodes); }
-
-private:
-    std::unordered_map< node_id_t, std::vector< std::pair<node_id_t,edge_id_t> > >& m_node_neighborhoods;
-    const std::unordered_map<node_id_t,node_id_t>& m_processed_nodes;
 
     // Speed up sort by sorting only the relevant range in vector.
     inline void custom_sort( std::vector< std::pair<node_id_t,edge_id_t> >& vector, uint32_t new_elements ) const
@@ -207,53 +259,57 @@ public:
     using edge_id_t = EdgeIdT;
     using real_t = RealT;
 
-    block_processor( apegrunt::Graph_ptr network, std::unordered_map< node_id_t, std::vector< std::pair<node_id_t,edge_id_t> > >& node_neighborhoods, double threshold )
+    block_processor( apegrunt::Graph_ptr network, std::vector< std::vector< std::pair<node_id_t,edge_id_t> > >& node_neighborhoods, double threshold, std::size_t block_start )
     : m_network(network),
       m_node_neighborhoods(node_neighborhoods),
-      m_threshold(threshold)
+      m_threshold(threshold),
+      m_block_start(block_start)
     { }
 
+    #ifndef SPYDRPICK_NO_TBB
     // Run the ARACNE procedure on the new block of edges.
     inline void operator()( tbb::blocked_range<std::size_t>& r) const
     {
         for( auto edge_idx = r.begin(); edge_idx < r.end(); ++edge_idx ) { process_edge( edge_idx ); }
     }
-
+    #else
     // Run the ARACNE procedure on the new block of edges. Non-TBB implementation.
     inline void operator()( std::size_t block_start, std::size_t block_end ) const
     {
         for( auto edge_idx = block_start; edge_idx < block_end; ++edge_idx ) { process_edge (edge_idx ); }
     }
+    #endif // #ifndef SPYDRPICK_NO_TBB
 
 private:
     const double m_threshold;
+    const std::size_t m_block_start;
     apegrunt::Graph_ptr m_network;
-    std::unordered_map< node_id_t, std::vector< std::pair<node_id_t,edge_id_t> > >& m_node_neighborhoods;
+    std::vector< std::vector< std::pair<node_id_t,edge_id_t> > >& m_node_neighborhoods;
 
     // Process a single edge.
     inline void process_edge( std::size_t edge_idx ) const
     {
-        auto edge = (*m_network)[edge_idx];
-        node_id_t node1 = edge.node1();
-        node_id_t node2 = edge.node2();
-        real_t mi1 = edge.weight();
+        auto& edge1 = (*m_network)[edge_idx];
+        node_id_t node1 = edge1.node1();
+        node_id_t node2 = edge1.node2();
+        real_t mi1 = edge1.weight();
 
-        std::vector< std::pair<edge_id_t,edge_id_t> > intersection_edges = intersection( m_node_neighborhoods, node1, node2 );
+        std::vector< std::pair<edge_id_t,edge_id_t> > intersection_edges = intersection( m_node_neighborhoods, node1, node2, edge_idx );
+        // Process clique.
         for( auto& edge_pair : intersection_edges )
         {
-            edge_id_t edge_idx2 = edge_pair.first;
-            edge_id_t edge_idx3 = edge_pair.second;
-            auto& edge2 = (*m_network)[edge_idx2];
-            auto& edge3 = (*m_network)[edge_idx3];
+            auto& edge2 = (*m_network)[edge_pair.first];
+            auto& edge3 = (*m_network)[edge_pair.second];
             real_t mi2 = edge2.weight();
             real_t mi3 = edge3.weight();
-            real_t min12 = std::min(mi1, mi2);
-            real_t min23 = std::min(mi2, mi3);
-            real_t min123 = std::min(min12, min23);
-            if( std::max(min12, min23) - min123 >= m_threshold )
+            real_t midval = std::max<real_t>( std::min<real_t>(mi1, mi2), std::min<real_t>(mi2, mi3) );
+            real_t minval = std::min<real_t>( mi1, std::min<real_t>(mi2, mi3) );
+            if( midval - minval >= m_threshold )
             {
-                edge_id_t min_edge_idx = mi1 == min123 ? edge_idx : (mi2 == min123 ? edge_idx2 : edge_idx3);
-                (*m_network)[min_edge_idx].set(); // Thread-safe becaues of atomic operation.
+                // Thread-safe because of atomic operation(s).
+                if( mi1 == minval ) { edge1.set(); }
+                if( mi2 == minval ) { edge2.set(); }
+                if( mi3 == minval ) { edge3.set(); }
             }
         }
     }
@@ -284,18 +340,59 @@ private:
      * Finds intersection of ne(node1) and ne(node2). Nodes in this intersection form 3-cliques/triangles with node1 and node2.
      * Returns a vector of edge index pairs for edges (node1, node3) and (node2, node3) for each node3 in intersection.
     */
-    inline std::vector< std::pair<edge_id_t,edge_id_t> > intersection( const std::unordered_map< node_id_t, std::vector< std::pair<node_id_t,edge_id_t> > >& node_neighborhoods, node_id_t node1, node_id_t node2 ) const
+    inline std::vector< std::pair<edge_id_t,edge_id_t> > intersection( const std::vector< std::vector< std::pair<node_id_t,edge_id_t> > >& node_neighborhoods, node_id_t node1, node_id_t node2, std::size_t edge_idx ) const
     {
         std::vector< std::pair<edge_id_t,edge_id_t> > intersection_edges;
         for( const auto& neighbor : node_neighborhoods.at(node1) )
         {
+            if( neighbor.first == node2 ) { continue; }
+            if( neighbor.second >= m_block_start && neighbor.second < edge_idx ) { continue; } // Clique candidate will be processed by another call.
             edge_id_t res = binary_search( node_neighborhoods.at(node2), neighbor.first ); // Returns std::numeric_limits::max() if neighbor was not found.
             if( res < std::numeric_limits<edge_id_t>::max() )
             {
-                intersection_edges.emplace_back( res, neighbor.second );
+                intersection_edges.emplace_back( neighbor.second, res );
             };
         }
         return intersection_edges;
+    }
+
+};
+
+template< typename NodeIdT >
+class result_storer
+{
+public:
+    using node_id_t = NodeIdT;
+
+    result_storer( apegrunt::Graph_ptr network, apegrunt::Graph_ptr remapped_network )
+    : m_network(network),
+      m_remapped_network(remapped_network)
+    { }
+
+    #ifndef SPYDRPICK_NO_TBB
+    // Store result to original input graph.
+    inline void operator()( tbb::blocked_range<std::size_t>& r) const
+    {
+        for( auto edge_idx = r.begin(); edge_idx < r.end(); ++edge_idx ) { store_edge( edge_idx ); }
+    }
+    #else
+    // Store result to original input graph. Non-TBB implementation.
+    inline void operator()( std::size_t block_start, std::size_t block_end ) const
+    {
+        for( std::size_t edge_idx = block_start; edge_idx < block_end; ++edge_idx ) { store_edge( edge_idx ); }
+    }
+    #endif // #ifndef SPYDRPICK_NO_TBB
+
+private:
+    apegrunt::Graph_ptr m_network;
+    apegrunt::Graph_ptr m_remapped_network;
+
+    inline void store_edge( std::size_t edge_idx ) const
+    {
+        if( !bool((*m_remapped_network)[edge_idx]) ) // Booleans swapped in remapped network.
+        {
+            (*m_network)[edge_idx].set();
+        }
     }
 
 };
@@ -311,7 +408,7 @@ void aracne( const apegrunt::Graph_ptr input_graph )
 	const double threshold = aracne::ARACNE_options::edge_threshold();
     const uint32_t block_size = aracne::ARACNE_options::block_size();
 	bool debug = true; // Make into a (hidden?) command line argument or remove entirely.
-    std::size_t verbose_output_interval = n_edges / 10;
+    std::size_t verbose_output_interval = 1e6;
     std::size_t verbose_previous_block_start = 0;
 
     // Setup timers.
@@ -328,11 +425,12 @@ void aracne( const apegrunt::Graph_ptr input_graph )
     uint64_t time_sort_global = 0;
     uint64_t time_process_global = 0;
 
-    std::unordered_map< node_id_t, std::shared_ptr<std::mutex> > node_mtx;
-    std::unordered_map< node_id_t, std::vector< std::pair<node_id_t,edge_id_t> > > node_neighborhoods;
+    std::vector< std::shared_ptr<std::mutex> > node_mtx;
+    std::vector< std::vector< std::pair<node_id_t,edge_id_t> > > node_neighborhoods;
+    std::unordered_map<node_id_t,node_id_t> node_map;
 
     steptimer.start();
-    initialize_node_mtx_and_neighborhoods<node_id_t,edge_id_t>( input_graph, node_mtx, node_neighborhoods );
+    apegrunt::Graph_ptr remapped_input_graph = remap_and_initialize<node_id_t,edge_id_t,real_t>( input_graph, node_neighborhoods, node_mtx, node_map ); 
     steptimer.stop();
     if( aracne::ARACNE_options::verbose() ) { *aracne::ARACNE_options::get_out_stream() << "  initialization routine time=" << stopwatch::time_string(steptimer.elapsed_time()) << "\n"; }
 
@@ -341,52 +439,53 @@ void aracne( const apegrunt::Graph_ptr input_graph )
     {
         std::size_t block_end = std::min( block_start + block_size, (std::size_t) n_edges );
 
+        // Read next block of edges into neighborhood vector. Trusts that network contains no duplicate edges.
         edgestimer.start(); // Debug timer.
         std::vector< std::pair<node_id_t,node_id_t> > processed_edges(block_end - block_start);
-        // Read next block of edges into neighborhood vector. Trusts that network contains no duplicate edges.
-        auto reader = block_reader<node_id_t,edge_id_t>( input_graph, node_neighborhoods, node_mtx, processed_edges, block_start );
+        auto reader = block_reader<node_id_t,edge_id_t>( remapped_input_graph, node_neighborhoods, node_mtx, processed_edges, block_start );
         #ifndef SPYDRPICK_NO_TBB
         tbb::parallel_for( tbb::blocked_range<std::size_t>( block_start, block_end ), reader );
         #else
-        reader()( block_start, block_end ); // Single-threaded.
+        reader( block_start, block_end ); // Single-threaded.
         #endif // #ifndef SPYDRPICK_NO_TBB
         edgestimer.stop();
         time_edges += edgestimer.elapsed_time();
 
-        sorttimer.start(); // Debug timer.
         // Re-sorts node neighborhoods after new block of edges was added.
-        std::unordered_map<node_id_t,node_id_t> processed_nodes = create_processed_nodes_map<node_id_t>( processed_edges );
-        auto sorter = block_sorter<node_id_t,edge_id_t>( node_neighborhoods, processed_nodes );
+        sorttimer.start(); // Debug timer.
+        // Map processed edges into processed nodes.
+        tbb::concurrent_unordered_map<node_id_t,node_id_t> processed_nodes;
+        auto nodes_mapper = processed_nodes_mapper<node_id_t>( processed_edges, processed_nodes );
         #ifndef SPYDRPICK_NO_TBB
-        tbb::parallel_for_each( sorter.begin(), sorter.end(), sorter );
+        tbb::parallel_for( tbb::blocked_range<std::size_t>( 0, processed_edges.size() ), nodes_mapper );
         #else
-        for( auto itr = sorter.begin(); itr < sorter.end(); ++itr ) { sorter()( *itr ); } // Single-threaded;
+        nodes_mapper( 0, processed_edges.size() );
+        #endif // #ifndef SPYDRPICK_NO_TBB
+        std::vector< std::pair<node_id_t,node_id_t> > processed_nodes_vector = nodes_mapper.get_processed_nodes_vector();
+        auto sorter = block_sorter<node_id_t,edge_id_t>( node_neighborhoods, processed_nodes_vector );
+        #ifndef SPYDRPICK_NO_TBB
+        tbb::parallel_for( tbb::blocked_range<std::size_t>( 0, processed_nodes_vector.size() ), sorter );
+        #else
+        sorter( 0, processed_nodes_vector.size() );
         #endif // #ifndef SPYDRPICK_NO_TBB
         sorttimer.stop();
         time_sort += sorttimer.elapsed_time();
 
+        // Run the ARACNE procedure on the new block of edges.
         processtimer.start(); // Debug timer.
-        auto processor = block_processor<node_id_t,edge_id_t,real_t>( input_graph, node_neighborhoods, threshold );
-
         // Safeguard for a particular threshold=0 case, where sequential edges with the same mi-value form a clique
         // that would not be processed correctly due to the sequence being cut by the block ending.
-        if( threshold == 0.0 && block_start > 0 && (*input_graph)[block_start - 1].weight() == (*input_graph)[block_start].weight() )
+        std::size_t block_start_fixed = block_start;
+        if( threshold == 0.0 && block_start > 0 )
         {
             // Move back to the start of the sequence and reprocess.
-            std::size_t idx = block_start - 2;
-            while( idx >= 0 && (*input_graph)[idx].weight() == (*input_graph)[block_start].weight() ) {--idx;}
-            #ifndef SPYDRPICK_NO_TBB
-            tbb::parallel_for( tbb::blocked_range<std::size_t>( idx, block_start ), processor );
-            #else
-            processor()( idx, block_start ); // Single-threaded.
-            #endif
+            while( block_start_fixed > 0 && (*remapped_input_graph)[block_start_fixed - 1].weight() == (*remapped_input_graph)[block_start].weight() ) { --block_start_fixed; }
         }
-
-        // Run the ARACNE procedure on the new block of edges.
+        auto processor = block_processor<node_id_t,edge_id_t,real_t>( remapped_input_graph, node_neighborhoods, threshold, block_start_fixed );
         #ifndef SPYDRPICK_NO_TBB
-        tbb::parallel_for( tbb::blocked_range<std::size_t>( block_start, block_end ), processor );
+        tbb::parallel_for( tbb::blocked_range<std::size_t>( block_start_fixed, block_end ), processor );
         #else
-        processor()( block_start, block_end ); // Single-threaded.
+        processor( block_start_fixed, block_end ); // Single-threaded.
         #endif
         processtimer.stop();
         time_process += processtimer.elapsed_time();
@@ -406,7 +505,7 @@ void aracne( const apegrunt::Graph_ptr input_graph )
                     << "), processing blocks " << stopwatch::time_string(time_process) << '\n';
             }
             *aracne::ARACNE_options::get_out_stream() << oss.str();
-            verbose_previous_block_start = block_start;
+            verbose_previous_block_start = block_end;
             steptimer.start();
             time_edges_global += time_edges;
             time_sort_global += time_sort;
@@ -416,6 +515,20 @@ void aracne( const apegrunt::Graph_ptr input_graph )
             time_process = 0;
         }
 
+    }
+
+    // Store result to original input graph.
+    steptimer.start();
+    auto storer  = result_storer<node_id_t>( input_graph, remapped_input_graph );
+    #ifndef SPYDRPICK_NO_TBB
+    tbb::parallel_for( tbb::blocked_range<std::size_t>( 0, n_edges ), storer );
+    #else
+    storer( 0, n_edges ); // Single-threaded.
+    #endif // #ifndef SPYDRPICK_NO_TBB
+    steptimer.stop();
+    if( aracne::ARACNE_options::verbose() )
+    {
+        *aracne::ARACNE_options::get_out_stream() << "  Stored result in input graph time=" << stopwatch::time_string(steptimer.elapsed_time()) << "\n";
     }
 
     if( debug ){
@@ -440,7 +553,7 @@ void run_ARACNE( apegrunt::Graph_ptr network )
     auto& ntwrk = *network;
     for( std::size_t i = 0; i < n_edges; ++i)
     {
-    	data_out[i] = !bool(ntwrk[i]);
+    	data_out[i] = bool(ntwrk[i]);
     }
 
 	// Ensure that we always get a unique output filename
