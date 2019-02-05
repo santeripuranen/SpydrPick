@@ -3,7 +3,7 @@
 ## Get the package from Bioconda
 ```
 conda -c bioconda install spydrpick
-``
+```
 See detailed instructions [here](README.md/#the-SpydrPick-Conda-package
 
 
