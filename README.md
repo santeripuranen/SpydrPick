@@ -4,7 +4,7 @@
 ```
 conda -c bioconda install spydrpick
 ```
-See detailed instructions [here](README.md/#the-SpydrPick-Conda-package
+See detailed instructions [here](README.md/#the-SpydrPick-Conda-package)
 
 
 ## Get the Docker image
