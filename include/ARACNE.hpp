@@ -546,6 +546,8 @@ void run_ARACNE( apegrunt::Graph_ptr network )
     // Start ARACNE procedure.
     aracne(network);
 
+    /* Obsolete.
+
     // Write output as a boolean list of edges remaining after the ARACNE procedure, in same order as input, stored as uint32_t.
     // Todo: Input&output files are binary now, but we probably want a csv-format.
     std::vector<uint32_t> data_out(n_edges);
@@ -563,6 +565,8 @@ void run_ARACNE( apegrunt::Graph_ptr network )
 	{
 		aracne_outfile->stream()->write((char*) data_out.data(), n_edges * sizeof(uint32_t));
 	}
+
+    */
 
 	return;
 }
