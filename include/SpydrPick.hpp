@@ -278,6 +278,33 @@ struct single_edge_MI_solver
 
 };
 
+template< typename RealT  >
+inline std::size_t determine_threshold_pairs( std::size_t threshold_pairs, std::size_t possible_pairs, RealT threshold_percentile )
+{
+    using real_t = RealT;
+
+    if( threshold_pairs == 0 )
+    {
+        // Determine automatically.
+        threshold_pairs = 100000;
+        std::size_t desired_threshold_idx_from_end = 100;
+        std::size_t desired_max_threshold_pairs = 500000; // If above this, 'n_values' is likely too small.
+        while( threshold_pairs - threshold_percentile * threshold_pairs < desired_threshold_idx_from_end && threshold_pairs < desired_max_threshold_pairs )
+        {
+            threshold_pairs += 10000;
+        }
+    } 
+
+    // Safeguard against small alignments.
+    if( possible_pairs / 10 < threshold_pairs )
+    {
+        threshold_pairs = possible_pairs / 10;
+    }
+
+    return threshold_pairs;
+
+}
+
 template< typename RealT, typename StateT >
 RealT determine_MI_threshold( apegrunt::Alignment_ptr<StateT> alignment, std::size_t n_values )
 {
@@ -287,18 +314,19 @@ RealT determine_MI_threshold( apegrunt::Alignment_ptr<StateT> alignment, std::si
 
     const auto n_loci = alignment->n_loci();
     const std::size_t threshold_iterations = SpydrPick_options::get_mi_threshold_iterations();
-    std::size_t threshold_pairs = SpydrPick_options::get_mi_threshold_pairs();
 
     // Calculate threshold estimate index in the empirical CDF.
     std::size_t possible_pairs = n_loci * (n_loci - 1) / 2;
-    std::size_t threshold_idx = (1.0 - double(n_values) / possible_pairs) * threshold_pairs;
-    std::vector<RealT> thresholds;
+    real_t threshold_percentile = (1.0 - double(n_values) / possible_pairs);
+    std::size_t threshold_pairs = determine_threshold_pairs<real_t>( SpydrPick_options::get_mi_threshold_pairs(), possible_pairs, threshold_percentile );
+    std::size_t threshold_idx = threshold_percentile * threshold_pairs;
 
-    // Safeguard against small alignments.
-    if( possible_pairs / 10 < threshold_pairs )
+    if( SpydrPick_options::verbose() )
     {
-        threshold_pairs = possible_pairs / 10;
+        *SpydrPick_options::get_out_stream() << " (" << threshold_pairs << " pairs * " << SpydrPick_options::get_mi_threshold_iterations() << " iterations)\n";
     }
+
+    std::vector<RealT> thresholds;
 
     const auto verbose = SpydrPick_options::verbose();
     //SpydrPick_options::set_verbose( false );

@@ -38,7 +38,7 @@ double SpydrPick_options::s_mi_threshold = -1.;
 std::size_t SpydrPick_options::s_mi_values = 0;
 double SpydrPick_options::s_mi_pseudocount = 0.5;
 std::size_t SpydrPick_options::s_mi_threshold_iterations = 10;
-std::size_t SpydrPick_options::s_mi_threshold_pairs = 10000;
+std::size_t SpydrPick_options::s_mi_threshold_pairs = 0;
 std::size_t SpydrPick_options::s_ld_threshold = 0;
 bool SpydrPick_options::s_no_aracne = false;
 
@@ -141,7 +141,7 @@ void SpydrPick_options::m_init()
 		("mi-values", po::value< std::size_t >( &SpydrPick_options::s_mi_values )->default_value(SpydrPick_options::s_mi_values), "Approximate number of MI values to calculate from data (default=#samples*100).")
 		("mi-pseudocount", po::value< double >( &SpydrPick_options::s_mi_pseudocount )->default_value(SpydrPick_options::s_mi_pseudocount), "The MI pseudocount value.")
 		("mi-threshold-iterations", po::value< std::size_t >( &SpydrPick_options::s_mi_threshold_iterations )->default_value(SpydrPick_options::s_mi_threshold_iterations), "Number of iterations for estimating saving threshold.")
-		("mi-threshold-pairs", po::value< std::size_t >( &SpydrPick_options::s_mi_threshold_pairs )->default_value(SpydrPick_options::s_mi_threshold_pairs), "Number of sampled pairs for estimating saving threshold.")
+		("mi-threshold-pairs", po::value< std::size_t >( &SpydrPick_options::s_mi_threshold_pairs )->default_value(SpydrPick_options::s_mi_threshold_pairs), "Number of sampled pairs for estimating saving threshold (0=determine automatically).")
 		("ld-threshold", po::value< std::size_t >( &SpydrPick_options::s_ld_threshold )->default_value(SpydrPick_options::s_ld_threshold), "Threshold distance for linkage disequilibrium (LD).")
 		("no-aracne", po::bool_switch( &SpydrPick_options::s_no_aracne )->default_value(SpydrPick_options::s_no_aracne), "Skip ARACNE, only calculate MI.")
 	;

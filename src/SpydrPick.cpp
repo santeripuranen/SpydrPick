@@ -270,7 +270,7 @@ int main(int argc, char **argv)
 			cputimer.start();
 			if( SpydrPick_options::verbose() )
 			{
-				*SpydrPick_options::get_out_stream() << "SpydrPick: determine MI save threshold (" << SpydrPick_options::get_mi_threshold_pairs() << " pairs * " << SpydrPick_options::get_mi_threshold_iterations() << " iterations)\n";
+				*SpydrPick_options::get_out_stream() << "SpydrPick: determine MI save threshold";
 			}
 			const std::size_t top_pairs_to_save = SpydrPick_options::get_mi_values() != 0 ? SpydrPick_options::get_mi_values() : 100*alignment->n_loci();
 			const auto mi_threshold = determine_MI_threshold<double>( alignment, top_pairs_to_save );
