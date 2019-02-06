@@ -26,7 +26,7 @@ namespace spydrpick {
 struct spydrpick_version
 {
 	static const int s_MajorVersion = 1; // substantial rewrite
-	static const int s_MinorVersion = 0; // feature change
+	static const int s_MinorVersion = 1; // feature change
 	static const int s_SubminorVersion = 0; // bugfix, small enhancement
 };
 
