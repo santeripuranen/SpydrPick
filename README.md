@@ -56,11 +56,23 @@ SpydrPick will by default attempt to correct for population structure by assigni
 
 SpydrPick will by default return enough top ranking position pairs that these with certainty encompass all statistically significant interactions. However, an arbitrary number of top MI values can be requested using the `--mi-values=<int:#edges>` option.
 
+
 ## Deciphering SpydrPick output
 
 The main SpydrPick output file (`*.spydrpick_couplings.?-based.*edges`) contains a white space delimited, descending order list of MI values and pairs of position indices (using *1-based indexing* by default; control this with `--output-indexing-base`) numbered according to the columns (left to right) in the input alignment. The fields in the output are `[pos1 pos2 genome_distance ARACNE MI]`.
 
 Position pairs with MI values above the *outlier threshold* and further apart than `--ld-threshold` can be found also in the file titled `*.outliers`, along with some additional data. Here the output fields are `[pos1, pos2, genome_distance, ARACNE, MI, MI_wo_gaps, gap_effect, extreme_outlier]`, where `gap_effect` is calculated as `(1-MI_wo_gaps/MI)*100` and `extreme_outlier` indicates values that surpass the *extreme_outlier_threshold*. A high value of `gap_effect` warrants a closer look at the allele compositions of the positions involved, as the high MI value assigned to the edge appears to be gap-driven, indicating a possible alignment-associated artifact.
+
+
+## Plotting the results
+
+The SpydrPick output can be visualized as a [Manhattan plot](https://en.wikipedia.org/wiki/Manhattan_plot). We provide an easy-to-use [R](https://www.r-project.org/) script called [`gwes_plot.r`](gwes_plot.r) to create such a plot.
+
+To use `gwes_plot.r`, edit the `data_full_filepath` and (optionally) the `outliers_full_filepath` fields in the script file and run it in R.
+
+Fill in the `ld_dist` field in order to mark the *ld_threshold* with a vertical line in the plot.
+
+The plot file dimensions can be changed by modifying the values in section `Plot sizes`.
 
 
 ## Installation details
