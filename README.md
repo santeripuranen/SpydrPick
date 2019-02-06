@@ -96,7 +96,7 @@ The `SpydrPick` binary will by default be statically linked, except for [TBB](ht
 
 `SpydrPick` is written in C++ and wrapped into a [CMake](https://cmake.org/) project. It relies on several common external libraries. Your build environment must satisfy the following requirements and compile-time dependencies:
 
-* A C++14 compliant compiler (development was done using the 7-series [GNU C++ compiler](https://gcc.gnu.org/))
+* A C++14 compliant compiler (development was done using the [GNU C++ compiler](https://gcc.gnu.org/))
 * [CMake](https://cmake.org/)
 * [Boost](https://www.boost.org/)
 * [Intel(R) Threading Building Blocks (TBB)](https://www.threadingbuildingblocks.org/)
