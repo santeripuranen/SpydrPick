@@ -7,7 +7,7 @@
 # Filepaths.
 # ----------------------------------------------------------------------
 
-# SpydrPick's output full filepaths.
+# SpydrPick's output full filepaths. 'outliers_full_filepath' can be left empty.
 data_full_filepath <- ""
 outliers_full_filepath <- ""
 
@@ -49,14 +49,17 @@ options(scipen=999)
 
 time_reading_start  <- proc.time()
 data <- read.csv(data_full_filepath, header = FALSE, sep = " ") # May take a few minutes.
-outliers_data <- read.csv(outliers_full_filepath, header = FALSE, sep = " ")
-outliers <- c(outliers_data[dim(outliers_data)[1], 5], outliers_data[which(outliers_data[, 8] == 0)[1] - 1, 5])
+outliers <- numeric(2)
+if (file.exists(outliers_full_filepath)) {
+  outliers_data <- read.csv(outliers_full_filepath, header = FALSE, sep = " ")
+  outliers <- c(outliers_data[dim(outliers_data)[1], 5], outliers_data[which(outliers_data[, 8] == 0)[1] - 1, 5])
+}
 if (n_edges <= 0 || n_edges > dim(data)[1]) { n_edges <- dim(data)[1] }
 time_reading_end <- proc.time()
 time_reading <- (time_reading_end - time_reading_start)[[3]]
 
 # ----------------------------------------------------------------------
-# Create plot image.
+# Create plot image. May take a few minutes.
 # ----------------------------------------------------------------------
 
 time_plotting_start <- proc.time()
@@ -85,11 +88,15 @@ axis(2, at = seq(0.1, 1, 0.1), labels = seq(0.1, 1, 0.1), las = 1, tcl = -0.5)
 title(xlab = "Distance between positions (bp)", line = 1.2)
 title(xlab = substitute(x10^exp, list(exp = exponent)), line = 1.4, adj = 1)
 title(ylab = "Mutual information", line = 2.5)
-segments(0, outliers[1], max_distance, outliers[1], col = "red", lty = 2) # Outlier threshold.
-segments(0, outliers[2], max_distance, outliers[2], col = "red", lty = 2) # Extreme outlier threshold.
 if (ld_dist > 0) { segments(ld_dist, min_mi, ld_dist, 1, col = "red", lty = 2) } # Linkage disequilibrium distance.
-text(0, outliers[1], "*", col = "red", pos = 2, offset = 0.2, cex = 1, xpd = NA) # Outlier threshold.
-text(0, outliers[2], "**", col = "red", pos = 2, offset = 0.2, cex = 1, xpd = NA) # Extreme outlier threshold.
+if (outliers[1] > 0) { # Outlier threshold.
+  segments(0, outliers[1], max_distance, outliers[1], col = "red", lty = 2) 
+  text(0, outliers[1], "*", col = "red", pos = 2, offset = 0.2, cex = 1, xpd = NA)
+}
+if (outliers[2] > 0) { # Extreme outlier threshold.
+  segments(0, outliers[2], max_distance, outliers[2], col = "red", lty = 2) 
+  text(0, outliers[2], "**", col = "red", pos = 2, offset = 0.2, cex = 1, xpd = NA)
+}
 legend(x = max_distance, y = max_mi, cex = cex_legend, pch = plot_symbol, bty = "n", xjust = 1.2, yjust = 1.2,
        c("Indirect", "Direct"), col = c(color_indirect, color_direct))
 dev.off()
