@@ -51,8 +51,11 @@ time_reading_start  <- proc.time()
 data <- read.csv(data_full_filepath, header = FALSE, sep = " ") # May take a few minutes.
 outliers <- numeric(2)
 if (file.exists(outliers_full_filepath)) {
-  outliers_data <- read.csv(outliers_full_filepath, header = FALSE, sep = " ")
-  outliers <- c(outliers_data[dim(outliers_data)[1], 5], outliers_data[which(outliers_data[, 8] == 0)[1] - 1, 5])
+    outliers_data <- read.csv(outliers_full_filepath, header = FALSE, sep = " ")
+    outlier_idx <- dim(outliers_data)[1]
+    if (outlier_idx > 0) { outliers[1] <- outliers_data[outlier_idx, 5] }
+    extreme_outlier_idx <- which(outliers_data[, 8] == 0)[1] - 1
+    if (extreme_outlier_idx > 0) { outliers[2] <- outliers_data[extreme_outlier_idx, 5] }
 }
 if (n_edges <= 0 || n_edges > dim(data)[1]) { n_edges <- dim(data)[1] }
 time_reading_end <- proc.time()
