@@ -7,9 +7,8 @@
 # Filepaths.
 # ----------------------------------------------------------------------
 
-# SpydrPick's output full filepaths. 'outliers_full_filepath' can be left empty.
-data_full_filepath <- ""
-outliers_full_filepath <- ""
+# Full filepath for SpydrPick's output.
+input_full_filepath <- ""
 
 # Plot output directory and name.
 plot_output_directory_path <- getwd()
@@ -30,6 +29,10 @@ n_edges <- 0
 # Linkage disequilibrium distance (0 - not drawn).
 ld_dist <- 0
 
+# Estimated outlier thresholds (0 - not drawn).
+outlier_threshold <- 0
+extreme_outlier_threshold <- 0
+
 # Colors.
 color_direct <- rgb(0, 115, 190, maxColorValue = 255)
 color_indirect <- rgb(192, 192, 192, maxColorValue = 255)
@@ -44,20 +47,12 @@ cex_legend <- 1.2
 options(scipen=999)
 
 # ----------------------------------------------------------------------
-# Read data and determine outliers.
+# Read input.
 # ----------------------------------------------------------------------
 
 time_reading_start  <- proc.time()
-data <- read.csv(data_full_filepath, header = FALSE, sep = " ") # May take a few minutes.
-outliers <- numeric(2)
-if (file.exists(outliers_full_filepath)) {
-    outliers_data <- read.csv(outliers_full_filepath, header = FALSE, sep = " ")
-    outlier_idx <- dim(outliers_data)[1]
-    if (outlier_idx > 0) { outliers[1] <- outliers_data[outlier_idx, 5] }
-    extreme_outlier_idx <- which(outliers_data[, 8] == 0)[1] - 1
-    if (extreme_outlier_idx > 0) { outliers[2] <- outliers_data[extreme_outlier_idx, 5] }
-}
-if (n_edges <= 0 || n_edges > dim(data)[1]) { n_edges <- dim(data)[1] }
+input <- read.csv(input_full_filepath, header = FALSE, sep = " ") # May take a few minutes.
+if (n_edges <= 0 || n_edges > dim(input)[1]) { n_edges <- dim(input)[1] }
 time_reading_end <- proc.time()
 time_reading <- (time_reading_end - time_reading_start)[[3]]
 
@@ -67,9 +62,9 @@ time_reading <- (time_reading_end - time_reading_start)[[3]]
 
 time_plotting_start <- proc.time()
 
-min_mi <- min(data[1:n_edges, 5])
-max_mi <- max(data[1:n_edges, 5])
-max_distance <- max(data[1:n_edges, 3])
+min_mi <- min(input[1:n_edges, 5])
+max_mi <- max(input[1:n_edges, 5])
+max_distance <- max(input[1:n_edges, 3])
 exponent <- round(log10(max_distance)) - 1
 
 # Get unique output filename.
@@ -81,10 +76,10 @@ while (file.exists(output_full_filepath)) {
 }
 
 png(output_full_filepath, width = plot_width, height = plot_height, pointsize = plot_pointsize)
-plot(data[!data[, 4], 3], data[!data[, 4], 5], col = color_indirect, type = "p", pch = plot_symbol, cex = cex_indirect, 
+plot(input[!input[, 4], 3], input[!input[, 4], 5], col = color_indirect, type = "p", pch = plot_symbol, cex = cex_indirect, 
      xlim = c(0, max_distance), ylim = c(min_mi, max_mi), xaxs = "i", yaxs = "i",
      xlab = "", ylab = "", xaxt = "n", yaxt = "n", bty = "n")
-lines(data[as.logical(data[, 4]), 3], data[as.logical(data[, 4]), 5], col = color_direct, type = "p", pch = plot_symbol, cex = cex_direct)
+lines(input[as.logical(input[, 4]), 3], input[as.logical(input[, 4]), 5], col = color_direct, type = "p", pch = plot_symbol, cex = cex_direct)
 axis(1, at = seq(0, max_distance, 10^exponent), tick = FALSE, labels = seq(0, max_distance / 10^exponent), line = -0.8)
 axis(2, at = seq(0.05, 1, 0.05), labels = FALSE, tcl = -0.5)
 axis(2, at = seq(0.1, 1, 0.1), labels = seq(0.1, 1, 0.1), las = 1, tcl = -0.5)
@@ -92,17 +87,16 @@ title(xlab = "Distance between positions (bp)", line = 1.2)
 title(xlab = substitute(x10^exp, list(exp = exponent)), line = 1.4, adj = 1)
 title(ylab = "Mutual information", line = 2.5)
 if (ld_dist > 0) { segments(ld_dist, min_mi, ld_dist, 1, col = "red", lty = 2) } # Linkage disequilibrium distance.
-if (outliers[1] > 0) { # Outlier threshold.
-  segments(0, outliers[1], max_distance, outliers[1], col = "red", lty = 2) 
-  text(0, outliers[1], "*", col = "red", pos = 2, offset = 0.2, cex = 1, xpd = NA)
+if (outlier_threshold > 0) {
+  segments(0, outlier_threshold, max_distance, outlier_threshold, col = "red", lty = 2) 
+  text(0, outlier_threshold, "*", col = "red", pos = 2, offset = 0.2, cex = 1, xpd = NA)
 }
-if (outliers[2] > 0) { # Extreme outlier threshold.
-  segments(0, outliers[2], max_distance, outliers[2], col = "red", lty = 2) 
-  text(0, outliers[2], "**", col = "red", pos = 2, offset = 0.2, cex = 1, xpd = NA)
+if (extreme_outlier_threshold > 0) { # Extreme outlier threshold.
+  segments(0, extreme_outlier_threshold, max_distance, extreme_outlier_threshold, col = "red", lty = 2) 
+  text(0, extreme_outlier_threshold, "**", col = "red", pos = 2, offset = 0.2, cex = 1, xpd = NA)
 }
 legend(x = max_distance, y = max_mi, cex = cex_legend, pch = plot_symbol, bty = "n", xjust = 1.2, yjust = 1.2,
        c("Indirect", "Direct"), col = c(color_indirect, color_direct))
 dev.off()
 time_plotting_end <- proc.time()
 time_plotting <- (time_plotting_end - time_plotting_start)[[3]]
-
