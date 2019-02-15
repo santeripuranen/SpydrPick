@@ -36,7 +36,13 @@ set( SPYDRPICK_GCC_OPTIMIZATION_FLAGS "${SPYDRPICK_GCC_OPTIMIZATION_FLAGS} -flto
 
 # release build flags
 set( SPYDRPICK_GCC_RELEASE_FLAGS "-w -DNDEBUG -fvisibility=hidden -fvisibility-inlines-hidden -Wl,--strip-all" )
-set( CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -Wall ${SPYDRPICK_GCC_OPTIMIZATION_FLAGS} ${SPYDRPICK_GCC_RELEASE_FLAGS}")
+set( SPYDRPICK_CLANG_RELEASE_FLAGS "-w -DNDEBUG -fvisibility=hidden -fvisibility-inlines-hidden -Wl,-s" )
+
+if("${CMAKE_CXX_COMPILER_ID}" MATCHES "GNU")
+	set( CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -Wall ${SPYDRPICK_GCC_OPTIMIZATION_FLAGS} ${SPYDRPICK_GCC_RELEASE_FLAGS}")
+elseif("${CMAKE_CXX_COMPILER_ID}" MATCHES "Clang")
+	set( CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -Wall ${SPYDRPICK_GCC_OPTIMIZATION_FLAGS} ${SPYDRPICK_CLANG_RELEASE_FLAGS}")
+endif()
 
 # debug build flags
 set( SPYDRPICK_GCC_DEBUG_FLAGS "-pg -g -ftree-vectorizer-verbose=2" )
@@ -69,8 +75,7 @@ endif()
 
 # Add rt and pthreads library if building in UNIX
 if( UNIX )
-	target_link_libraries( SpydrPick rt )
-	target_link_libraries( SpydrPick pthread )
+	target_link_libraries( SpydrPick pthread rt )
 endif( UNIX )
 
 # Prevent linking against shared libraries on OS X;
