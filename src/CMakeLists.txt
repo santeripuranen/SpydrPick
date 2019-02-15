@@ -75,12 +75,8 @@ endif()
 
 # Add rt and pthreads library if building in UNIX
 if( UNIX )
-	target_link_libraries( SpydrPick pthread )
+	target_link_libraries( SpydrPick pthread rt )
 endif( UNIX )
-
-if( LINUX )
-	target_link_libraries( SpydrPick rt )
-endif( LINUX )
 
 # Prevent linking against shared libraries on OS X;
 # Apple gcc always links against a shared version of a library if present,
