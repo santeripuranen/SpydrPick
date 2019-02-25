@@ -1,6 +1,7 @@
 ## Get SpydrPick
 
-#### Bioconda [![install with bioconda](https://img.shields.io/badge/install%20with-bioconda-brightgreen.svg?style=flat)](http://bioconda.github.io/recipes/spydrpick/README.html)
+#### Bioconda
+[![Install with Bioconda](https://img.shields.io/badge/install%20with-bioconda-brightgreen.svg?style=flat)](http://bioconda.github.io/recipes/spydrpick/README.html) ![Supported platforms](https://anaconda.org/bioconda/spydrpick/badges/platforms.svg)
 ```
 conda install -c bioconda spydrpick
 ```
@@ -57,7 +58,7 @@ SpydrPick will by default return enough top ranking position pairs that these wi
 
 ## Deciphering SpydrPick output
 
-The main SpydrPick output file (`*.spydrpick_couplings.?-based.*edges`) contains a white space delimited, descending order list of MI values and pairs of position indices (using *1-based indexing* by default; control this with `--output-indexing-base`) numbered according to the columns (left to right) in the input alignment. The fields in the output are `[pos1 pos2 genome_distance ARACNE MI]`.
+The main SpydrPick output file `*.spydrpick_couplings.?-based.*edges` contains a white space delimited, descending order list of MI values and pairs of position indices (using *1-based indexing* by default; control this with `--output-indexing-base`) numbered according to the columns (left to right) in the input alignment. The fields in the output are `[pos1 pos2 genome_distance ARACNE MI]`.
 
 Position pairs with MI values above the *outlier threshold* and further apart than `--ld-threshold` can be found also in the file titled `*.outliers`, along with some additional data. Here the output fields are `[pos1, pos2, genome_distance, ARACNE, MI, MI_wo_gaps, gap_effect, extreme_outlier]`, where `gap_effect` is calculated as `(1-MI_wo_gaps/MI)*100` and `extreme_outlier` indicates values that surpass the *extreme_outlier_threshold*. A high value of `gap_effect` warrants a closer look at the allele compositions of the positions involved, as the high MI value assigned to the edge appears to be gap-driven, indicating a possible alignment-associated artifact.
 
@@ -97,9 +98,9 @@ In order to compile the `SpydrPick` binary, go to the `build` directory (create 
 cmake ..
 make SpydrPick
 ```
-This should set up the CMake project, compile the binary and place it into the `build/bin` directory. If not, then take a look at [Compile-time dependencies](README.md/#compile--time-dependencies).
+This should set up the SpydrPick [CMake](https://cmake.org/) project, compile the binary and place it into the `build/bin` directory. If not, then take a look at [Compile-time dependencies](README.md/#compile--time-dependencies) and [CMake configuration](README.md/#configuring-the-environment-for-CMake).
 
-The `SpydrPick` binary will by default be statically linked, except for [TBB](https://www.threadingbuildingblocks.org/) that can only be linked dynamically. Installing SpydrPick to another location is as easy as copying the binary. Note that the [TBB](https://www.threadingbuildingblocks.org/) runtime library will need to be present on the host system.
+The `SpydrPick` binary will by default be statically linked, except for [TBB](https://www.threadingbuildingblocks.org/) that can only be linked dynamically. Installing SpydrPick to another location is as easy as copying the binary. Note that the [TBB](https://www.threadingbuildingblocks.org/) runtime library must be present on the host system.
 
 
 #### Compile-time dependencies
@@ -107,11 +108,19 @@ The `SpydrPick` binary will by default be statically linked, except for [TBB](ht
 `SpydrPick` is written in C++ and wrapped into a [CMake](https://cmake.org/) project. It relies on several common external libraries. Your build environment must satisfy the following requirements and compile-time dependencies:
 
 * A C++14 compliant compiler (development was done using the [GNU C++ compiler](https://gcc.gnu.org/), but [Clang/LLVM](https://clang.llvm.org/) should work just as well)
-* [CMake](https://cmake.org/)
+* [CMake](https://cmake.org/) (version 3.3 or later)
 * [Boost](https://www.boost.org/)
 * [Intel(R) Threading Building Blocks (TBB)](https://www.threadingbuildingblocks.org/)
 
-You may need to set the [`CMAKE_MODULE_PATH`](https://cmake.org/cmake/help/latest/variable/CMAKE_MODULE_PATH.html) environment variable in order for `CMake` to find all relevant packages.
+#### Configuring the environment for CMake
+
+CMake locates and sets up the external dependencies on the local system using script files named `Find<package>.cmake`, which on linux systems are typically found in `/usr/share/cmake/Modules` or in the `Modules` subdirectory of custom CMake builds/installs; the [`CMAKE_MODULE_PATH`](https://cmake.org/cmake/help/latest/variable/CMAKE_MODULE_PATH.html) environment variable may need to be set in order for CMake to locate all relevant `Find*.cmake` scripts.
+
+The CMake script for locating Boost usually comes bundled with the CMake installation itself; however, this is not the case for TBB. If your system does not contain the `FindTBB.cmake` file and you get an [error message like this](https://github.com/santeripuranen/SpydrPick/issues/2#issue-405332114) then you can borrow the `FindTBB.cmake` script found over at Kitware's [VTK project](https://github.com/Kitware/VTK/blob/master/CMake/FindTBB.cmake) (save the file and point `CMAKE_MODULE_PATH` to the parent directory).
+
+In addition to `CMAKE_MODULE_PATH`, the following (shell) environment variables may need to be set for CMake project configuration to work properly: [`CMAKE_CXX_COMPILER`](), `BOOST_ROOT` and `TBB_ROOT`.
+
+In our experience even setting all of the above do not always guarantee success on all systems. If all else fails, one may try to pass one or all of the above to CMake during project initialization like this `cmake .. -DTBB_ROOT=<path to tbb dir>`.
 
 
 ## Cite
