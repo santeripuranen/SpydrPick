@@ -21,8 +21,7 @@ See how to compile [here](README.md/#building-SpydrPick-from-source).
 
 ## About
 
-SpydrPick is a command line tool for performing direct coupling analysis of aligned categorical datasets. It constructs a coupling graph based on thresholded node-pair (edge) scoring,
-followed by pruning of edges that represent indirect couplings.
+SpydrPick is a command line tool for performing 'direct coupling analysis' of aligned categorical datasets. It constructs a coupling graph based on thresholded node-pair [Mutual Information](https://en.wikipedia.org/wiki/Mutual_information) (MI) scoring, followed by pruning of edges that represent indirect couplings using the [ARACNE](https://doi.org/10.1186/1471-2105-7-S1-S7) algorithm.
 
 
 ## Using SpydrPick
@@ -120,7 +119,7 @@ The CMake script for locating Boost usually comes bundled with the CMake install
 
 In addition to `CMAKE_MODULE_PATH`, the following (shell) environment variables may need to be set for CMake project configuration to work properly: [`CMAKE_CXX_COMPILER`](), `BOOST_ROOT` and `TBB_ROOT`.
 
-In our experience even setting all of the above do not always guarantee success on all systems. If all else fails, one may try to pass one or all of the above to CMake during project initialization like this `cmake .. -DTBB_ROOT=<path to tbb dir>`.
+In our experience even setting all of the above does not always guarantee success on all systems. If all else fails, one may try to pass one or all of the above to CMake during project initialization like this `cmake .. -DTBB_ROOT=<path to tbb dir>`.
 
 
 ## Cite
