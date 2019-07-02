@@ -128,6 +128,6 @@ SpydrPick was developed as part of an academic project, and builds on the same u
 
 * Johan Pensar, Santeri Puranen, Neil MacAlasdair, Juri Kuronen, Gerry Tonkin-Hill, Maiju Pesonen, Brian Arnold, Yingying Xu, Aleksi Sipola, Leonor Sanchez-Buso, John A Lees, Claire Chewapreecha, Stephen D Bentley, Simon R Harris, Julian Parkhill, Nicholas J Croucher, Jukka Corander. **Genome-wide epistasis and co-selection study using mutual information.** *bioRxiv* 2019 [**doi:** 10.1101/523407](https://doi.org/10.1101/523407)
 
-* Santeri Puranen, Maiju Pesonen, Johan Pensar, Ying Ying Xu, John A. Lees, Stephen D. Bentley, Nicholas J. Croucher and Jukka Corander. SuperDCA for genome-wide epistasis analysis. *Microbial Genomics* 2018;4, [DOI 10.1099/mgen.0.000184](https://doi.org/10.1099/mgen.0.000184)
+* Santeri Puranen, Maiju Pesonen, Johan Pensar, Ying Ying Xu, John A. Lees, Stephen D. Bentley, Nicholas J. Croucher and Jukka Corander. **SuperDCA for genome-wide epistasis analysis.** *Microbial Genomics* 2018;4, [**doi:** 10.1099/mgen.0.000184](https://doi.org/10.1099/mgen.0.000184)
 
 * https://github.com/santeripuranen/SpydrPick
