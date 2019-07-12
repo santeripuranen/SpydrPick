@@ -21,16 +21,17 @@ if( ${CMAKE_PROJECT_NAME}_ENABLE_BOOST )
 
 	set( Boost_USE_STATIC_LIBS ON )
 	set( Boost_USE_MULTITHREADED TRUE )
+	set( Boost_NO_BOOST_CMAKE ON )
 	
-	find_package( Boost REQUIRED program_options filesystem iostreams system timer chrono ) #date_time thread
+	find_package( Boost REQUIRED program_options filesystem iostreams timer coroutine ) # system # chrono date_time thread
 	if( Boost_FOUND )
 		set( ${CMAKE_PROJECT_NAME}_NO_BOOST false CACHE INTERNAL "Don't use Boost, if true" )
 		setup_message( "found Boost v${Boost_MAJOR_VERSION}.${Boost_MINOR_VERSION}.${Boost_SUBMINOR_VERSION}" )
-		setup_message( "include dir: ${Boost_INCLUDE_DIR}" INDENT )
+		setup_message( "include dir: ${Boost_INCLUDE_DIRS}" INDENT )
 		setup_message( "library dir: ${Boost_LIBRARY_DIRS}" INDENT )
 		
 		# Place into global scope
-		set( Boost_INCLUDE_DIR ${Boost_INCLUDE_DIR} CACHE INTERNAL "Boost include directory" )
+		set( Boost_INCLUDE_DIRS ${Boost_INCLUDE_DIRS} CACHE INTERNAL "Boost include directory" )
 		set( Boost_LIBRARY_DIRS ${Boost_LIBRARY_DIRS} CACHE INTERNAL "Boost library directory" )
 		set( Boost_LIBRARIES ${Boost_LIBRARIES} CACHE INTERNAL "List of linkable Boost libraries" )
 		
