@@ -156,8 +156,6 @@ int main(int argc, char **argv)
 	stopwatch::stopwatch globaltimer( SpydrPick_options::verbose() ? SpydrPick_options::get_out_stream() : nullptr ); // for timing statistics
 	globaltimer.start();
 
-	apegrunt::Loci_ptr sample_list;
-
 	stopwatch::stopwatch cputimer( SpydrPick_options::verbose() ? SpydrPick_options::get_out_stream() : nullptr ); // for timing statistics
 
 	// get alignments
@@ -245,11 +243,19 @@ int main(int argc, char **argv)
 			}
 
 		}
-
-		if( sample_list )
+		if( apegrunt::Apegrunt_options::has_samplelist_filename() )
 		{
 			if( SpydrPick_options::verbose() )
 			{
+				*SpydrPick_options::get_out_stream() << "SpydrPick: sample include list from file \"" << apegrunt::Apegrunt_options::get_samplelist_filename() << "\"\n";
+			}
+			cputimer.start();
+			auto sample_list = apegrunt::parse_Loci_list( apegrunt::Apegrunt_options::get_samplelist_filename(), apegrunt::Apegrunt_options::get_input_indexing_base() );
+			cputimer.print_timing_stats();
+
+			if( SpydrPick_options::verbose() )
+			{
+				*SpydrPick_options::get_out_stream() << "SpydrPick: include list has " << sample_list->size() << " samples.\n";
 				*SpydrPick_options::get_out_stream() << "SpydrPick: trim alignment samples based on sample list \"" << sample_list->id_string() << "\"\n";
 			}
 			cputimer.start();
@@ -260,6 +266,9 @@ int main(int argc, char **argv)
 
 		// assign sample weights (parse from file or determine automatically)
 		apegrunt::cache_sample_weights( alignment );
+
+		// output sample weigths, if specified using the cmd line option
+		output_sample_weights( alignment );
 
 		// get state frequency profile and output to file
 		apegrunt::output_state_frequencies( alignment );

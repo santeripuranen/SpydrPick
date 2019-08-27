@@ -39,7 +39,7 @@ To run SpydrPick with default settings use:
 ```
 SpydrPick -v <name of input genome alignment file>
 ```
-where the input alignment should be in [FASTA format](https://en.wikipedia.org/wiki/FASTA_format).
+where the input alignment should be in [FASTA format](https://en.wikipedia.org/wiki/FASTA_format). Five distinct categories are currently supported: nucleotide symbols `A`, `C`, `G` and `T` are mapped as distinct categories, whereas *all other symbols* map to a single gap category. The FASTA parser is currently case-insensitive, i.e. lower-case and upper-case letters map to the same categories.
 
 The default settings are designed to be overall reasonable and can usually be left as they are. Notable exceptions are the *linkage disequilibrium (LD) threshold distance* option `--ld-threshold=<int:distance>` and whether the alignment represents a *circular* (default) or a *linear* chromosome/genome (add `--linear-genome`). The level and reach of LD depends on factors such as the recombination characteristics of the organism under study. For bacterial genomes typical values of `--ld-threshold` are in the 500-20000 bp range. The *outlier* and *extreme outlier* thresholds calculated by SpydrPick (and reported in the console output) are affected by these options as is, consequently, the contents of the outlier listing; the MI and ARACNE steps are not affected *per se*. It is in general safer to err to longer, more conservative distance estimates here, as this will have less of an impact on *outlier* and *extreme outlier* thresholds than too short distance cutoffs.
 
@@ -50,7 +50,7 @@ Default filtering will extract positions with *more than* 1 allele (not counting
 
 If the input alignment comes prefiltered, or the columns have non-unity stride for some other reason, the `--mappings-list=<string:filename>` option can be used to inform SpydrPick of the actual position indices. This will enable correct distances for LD threshold evaluations and will ensure that position indices are correct in the output. `--mappings-list` expects a file containing a white-space delimited list of indices the same size as the number of data columns in the input and matching each column in order from left to right. If the input genome is not linear and the full genome was not supplied as input then the correct genome size should be specified using the `--genome-size=<int:size>` option. Input and output indexing bases can be controlled separately using the `--input-indexing-base=<int:base>` and `--output-indexing-base=<int:base>` options. 
 
-SpydrPick will by default attempt to correct for population structure by assigning weights across samples in the input alignment. This weighting can modified by specifying with `--sample-reweighting-threshold=<float:[0,1]>` the threshold sequence identity for when two samples/sequences are considered to be equal. Weighting can be turned off altogether with the `--no-sample-reweighting` option -- all samples will then have equal (=1) weight. SpyderPick can also use sample weights supplied by the user with the `--sample-weights=<string:filename>` option. `--sample-weights` expects a file containing a white-space delimited list of values the same size as the number of samples in the input and matching each sequence from top to bottom as they appear in the input alignment.
+SpydrPick will by default attempt to correct for population structure by assigning weights across samples in the input alignment. This weighting can be modified by specifying with `--sample-reweighting-threshold=<float:[0,1]>` the threshold sequence identity for when two samples/sequences are considered to be equal. Weighting can be turned off altogether with the `--no-sample-reweighting` option -- all samples will then have equal (=1) weight. SpyderPick can also use sample weights supplied by the user with the `--sample-weights=<string:filename>` option. `--sample-weights` expects a file containing a white-space delimited list of values the same size as the number of samples in the input and matching each sequence from top to bottom as they appear in the input alignment.
 
 SpydrPick will by default return enough top ranking position pairs that these with certainty encompass all statistically significant interactions. However, an arbitrary number of top MI values can be requested using the `--mi-values=<int:#edges>` option.
 
@@ -124,8 +124,10 @@ In our experience even setting all of the above does not always guarantee succes
 
 ## Cite
 
-SpydrPick was developed as part of an academic project. Please cite:
+SpydrPick was developed as part of an academic project, and builds on the same underlying library as [SuperDCA](https://github.com/santeripuranen/SuperDCA). Please cite:
 
-* Johan Pensar, Santeri Puranen, Neil MacAlasdair, Juri Kuronen, Gerry Tonkin-Hill, Maiju Pesonen, Brian Arnold, Yingying Xu, Aleksi Sipola, Leonor Sanchez-Buso, John A Lees, Claire Chewapreecha, Stephen D Bentley, Simon R Harris, Julian Parkhill, Nicholas J Croucher, Jukka Corander. **Genome-wide epistasis and co-selection study using mutual information.** *bioRxiv* 2019 [**doi:** 10.1101/523407](https://doi.org/10.1101/523407)
+* Johan Pensar, Santeri Puranen, Neil MacAlasdair, Juri Kuronen, Gerry Tonkin-Hill, Maiju Pesonen, Brian Arnold, Yingying Xu, Aleksi Sipola, Leonor Sanchez-Buso, John A Lees, Claire Chewapreecha, Stephen D Bentley, Simon R Harris, Julian Parkhill, Nicholas J Croucher, Jukka Corander. **Genome-wide epistasis and co-selection study using mutual information.** *Nucleic Acids Research* 2019, gkz656 [**doi:** 10.1093/nar/gkz656](https://doi.org/10.1093/nar/gkz656)
+
+* Santeri Puranen, Maiju Pesonen, Johan Pensar, Ying Ying Xu, John A. Lees, Stephen D. Bentley, Nicholas J. Croucher and Jukka Corander. **SuperDCA for genome-wide epistasis analysis.** *Microbial Genomics* 2018;4, [**doi:** 10.1099/mgen.0.000184](https://doi.org/10.1099/mgen.0.000184)
 
 * https://github.com/santeripuranen/SpydrPick
