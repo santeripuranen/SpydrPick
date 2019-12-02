@@ -25,7 +25,6 @@
 #include <cstdint>
 #include <chrono>
 #include <limits>
-#include <map>
 #include <memory>
 #include <mutex>
 #include <numeric>
@@ -66,15 +65,15 @@ apegrunt::Graph_ptr remap_and_initialize( const apegrunt::Graph_ptr network, std
         node_id_t node2 = edge.node2();
         real_t mi = edge.weight();
 
-        if( node_map.count(node1) == 0) { 
+        if( node_map.count(node1) == 0 ) { 
             node_map[node1] = size_counter++;
             node_neighborhoods.emplace_back(); // Default-initialize.
-            node_neighborhoods.back().reserve(128);
+            node_neighborhoods.back().reserve( 128 );
         }
-        if( node_map.count(node2) == 0) { 
+        if( node_map.count(node2) == 0 ) { 
             node_map[node2] = size_counter++;
             node_neighborhoods.emplace_back(); // Default-initialize.
-            node_neighborhoods.back().reserve(128);
+            node_neighborhoods.back().reserve( 128 );
         }
 
         remapped_network->add( node_map[node1], node_map[node2], mi );
@@ -83,7 +82,7 @@ apegrunt::Graph_ptr remap_and_initialize( const apegrunt::Graph_ptr network, std
     // Initialize mutexes.
     for( std::size_t mtx = 0; mtx < size_counter; mtx += node_mtx_grouping_size )
     {
-        node_mtx.emplace_back(new std::mutex);
+        node_mtx.emplace_back( new std::mutex );
     }
 
     return remapped_network;
@@ -143,7 +142,7 @@ private:
     inline void safe_emplace_back( node_id_t node, node_id_t new_neighbor, edge_id_t edge_idx, std::shared_ptr<std::mutex> node_mtx ) const
     {
         node_mtx->lock();
-        m_node_neighborhoods[node].emplace_back(new_neighbor, edge_idx);
+        m_node_neighborhoods[node].emplace_back( new_neighbor, edge_idx );
         node_mtx->unlock();
     }
 
@@ -174,10 +173,10 @@ public:
     std::vector< std::pair<node_id_t,node_id_t> > get_processed_nodes_vector()
     {
         std::vector< std::pair<node_id_t,node_id_t> > processed_nodes_vector;
-        processed_nodes_vector.reserve(m_processed_nodes.size());
+        processed_nodes_vector.reserve( m_processed_nodes.size() );
         for( auto processed_node : m_processed_nodes )
         {
-            processed_nodes_vector.emplace_back(processed_node);
+            processed_nodes_vector.emplace_back( processed_node );
         }
         return processed_nodes_vector;
     }
@@ -210,12 +209,12 @@ public:
     #ifndef SPYDRPICK_NO_TBB
     inline void operator()( tbb::blocked_range<std::size_t>& r ) const
     {
-        for( auto idx = r.begin(); idx < r.end(); ++idx) { process_node(m_processed_nodes[idx]); }
+        for( auto idx = r.begin(); idx < r.end(); ++idx) { process_node( m_processed_nodes[idx] ); }
     }
     #else
     inline void operator()( std::size_t start, std::size_t end ) const
     {
-        for( auto idx = start; idx < end; ++idx) { process_node(m_processed_nodes[idx]); }
+        for( auto idx = start; idx < end; ++idx) { process_node( m_processed_nodes[idx] ); }
     }
     #endif // #ifndef SPYDRPICK_NO_TBB
 
@@ -276,7 +275,7 @@ public:
     // Run the ARACNE procedure on the new block of edges. Non-TBB implementation.
     inline void operator()( std::size_t block_start, std::size_t block_end ) const
     {
-        for( auto edge_idx = block_start; edge_idx < block_end; ++edge_idx ) { process_edge (edge_idx ); }
+        for( auto edge_idx = block_start; edge_idx < block_end; ++edge_idx ) { process_edge( edge_idx ); }
     }
     #endif // #ifndef SPYDRPICK_NO_TBB
 
@@ -343,11 +342,11 @@ private:
     inline std::vector< std::pair<edge_id_t,edge_id_t> > intersection( const std::vector< std::vector< std::pair<node_id_t,edge_id_t> > >& node_neighborhoods, node_id_t node1, node_id_t node2, std::size_t edge_idx ) const
     {
         std::vector< std::pair<edge_id_t,edge_id_t> > intersection_edges;
-        for( const auto& neighbor : node_neighborhoods.at(node1) )
+        for( const auto& neighbor : node_neighborhoods.at( node1 ) )
         {
             if( neighbor.first == node2 ) { continue; }
             if( neighbor.second >= m_block_start && neighbor.second < edge_idx ) { continue; } // Clique candidate will be processed by another call.
-            edge_id_t res = binary_search( node_neighborhoods.at(node2), neighbor.first ); // Returns std::numeric_limits::max() if neighbor was not found.
+            edge_id_t res = binary_search( node_neighborhoods.at( node2 ), neighbor.first ); // Returns std::numeric_limits::max() if neighbor was not found.
             if( res < std::numeric_limits<edge_id_t>::max() )
             {
                 intersection_edges.emplace_back( neighbor.second, res );
@@ -432,7 +431,7 @@ void aracne( const apegrunt::Graph_ptr input_graph )
     steptimer.start();
     apegrunt::Graph_ptr remapped_input_graph = remap_and_initialize<node_id_t,edge_id_t,real_t>( input_graph, node_neighborhoods, node_mtx, node_map ); 
     steptimer.stop();
-    if( aracne::ARACNE_options::verbose() ) { *aracne::ARACNE_options::get_out_stream() << "  initialization routine time=" << stopwatch::time_string(steptimer.elapsed_time()) << "\n"; }
+    if( aracne::ARACNE_options::verbose() ) { *aracne::ARACNE_options::get_out_stream() << "  initialization routine time=" << stopwatch::time_string( steptimer.elapsed_time() ) << "\n"; }
 
     steptimer.start();
     for( std::size_t block_start = 0; block_start < n_edges; block_start += block_size )
@@ -441,7 +440,7 @@ void aracne( const apegrunt::Graph_ptr input_graph )
 
         // Read next block of edges into neighborhood vector. Trusts that network contains no duplicate edges.
         edgestimer.start(); // Debug timer.
-        std::vector< std::pair<node_id_t,node_id_t> > processed_edges(block_end - block_start);
+        std::vector< std::pair<node_id_t,node_id_t> > processed_edges( block_end - block_start );
         auto reader = block_reader<node_id_t,edge_id_t>( remapped_input_graph, node_neighborhoods, node_mtx, processed_edges, block_start );
         #ifndef SPYDRPICK_NO_TBB
         tbb::parallel_for( tbb::blocked_range<std::size_t>( block_start, block_end ), reader );
@@ -490,19 +489,19 @@ void aracne( const apegrunt::Graph_ptr input_graph )
         processtimer.stop();
         time_process += processtimer.elapsed_time();
 
-        if( aracne::ARACNE_options::verbose() && (block_start > verbose_previous_block_start + verbose_output_interval || block_end == n_edges ) )
+        if( aracne::ARACNE_options::verbose() && ( block_start > verbose_previous_block_start + verbose_output_interval || block_end == n_edges ) )
         {
             std::ostringstream oss;
             std::size_t verbose_previous_block_end = verbose_previous_block_start + block_size;
             steptimer.stop();
             oss << "  processed blocks (" << verbose_previous_block_start << ", " << verbose_previous_block_end << "), ..., ("
-                << block_start << ", " << block_end << ") time=" << stopwatch::time_string(steptimer.elapsed_time()) << "\n";
+                << block_start << ", " << block_end << ") time=" << stopwatch::time_string( steptimer.elapsed_time() ) << "\n";
             if( debug )
             {
-                oss << "  (Debug) reading blocks " << stopwatch::time_string(time_edges + time_sort)
-                    << " (processing " << stopwatch::time_string(time_edges) 
-                    << " + sorting " << stopwatch::time_string(time_sort) 
-                    << "), processing blocks " << stopwatch::time_string(time_process) << '\n';
+                oss << "  (Debug) reading blocks " << stopwatch::time_string( time_edges + time_sort )
+                    << " (processing " << stopwatch::time_string( time_edges ) 
+                    << " + sorting " << stopwatch::time_string( time_sort ) 
+                    << "), processing blocks " << stopwatch::time_string( time_process ) << '\n';
             }
             *aracne::ARACNE_options::get_out_stream() << oss.str();
             verbose_previous_block_start = block_end;
@@ -528,46 +527,21 @@ void aracne( const apegrunt::Graph_ptr input_graph )
     steptimer.stop();
     if( aracne::ARACNE_options::verbose() )
     {
-        *aracne::ARACNE_options::get_out_stream() << "  Stored result in input graph time=" << stopwatch::time_string(steptimer.elapsed_time()) << "\n";
+        *aracne::ARACNE_options::get_out_stream() << "  Stored result in input graph time=" << stopwatch::time_string( steptimer.elapsed_time() ) << "\n";
     }
 
     if( debug ){
-        *aracne::ARACNE_options::get_out_stream() << "  (DEBUG) TOTAL reading blocks " << stopwatch::time_string(time_edges_global + time_sort_global)
-            << " (processing " << stopwatch::time_string(time_edges_global) 
-            << " + sorting " << stopwatch::time_string(time_sort_global) 
-            << "), processing blocks " << stopwatch::time_string(time_process_global) << '\n';
+        *aracne::ARACNE_options::get_out_stream() << "  (DEBUG) TOTAL reading blocks " << stopwatch::time_string( time_edges_global + time_sort_global )
+            << " (processing " << stopwatch::time_string( time_edges_global ) 
+            << " + sorting " << stopwatch::time_string( time_sort_global ) 
+            << "), processing blocks " << stopwatch::time_string( time_process_global ) << '\n';
     }
 }
 
 void run_ARACNE( apegrunt::Graph_ptr network )
 {
-	const auto n_edges = network->size();
-
     // Start ARACNE procedure.
-    aracne(network);
-
-    /* Obsolete.
-
-    // Write output as a boolean list of edges remaining after the ARACNE procedure, in same order as input, stored as uint32_t.
-    // Todo: Input&output files are binary now, but we probably want a csv-format.
-    std::vector<uint32_t> data_out(n_edges);
-
-    auto& ntwrk = *network;
-    for( std::size_t i = 0; i < n_edges; ++i)
-    {
-    	data_out[i] = bool(ntwrk[i]);
-    }
-
-	// Ensure that we always get a unique output filename
-	auto aracne_outfile = apegrunt::get_unique_ofstream( aracne::ARACNE_options::outfilename() );
-
-	if( aracne_outfile->stream()->is_open() && aracne_outfile->stream()->good() )
-	{
-		aracne_outfile->stream()->write((char*) data_out.data(), n_edges * sizeof(uint32_t));
-	}
-
-    */
-
+    aracne( network );
 	return;
 }
 
