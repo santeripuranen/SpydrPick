@@ -37,7 +37,6 @@
 #include "tbb/parallel_for.h"
 #include "tbb/parallel_for_each.h"
 #include "tbb/blocked_range.h" // should be included by parallel_for.h
-#include "tbb/concurrent_unordered_map.h"
 //#include "tbb/mutex.h"
 #endif // SPYDRPICK_NO_TBB
 
@@ -95,11 +94,11 @@ public:
     using node_id_t = NodeIdT;
     using edge_id_t = EdgeIdT;
 
-    block_reader( apegrunt::Graph_ptr network, std::vector< std::vector< std::pair<node_id_t,edge_id_t> > >& node_neighborhoods, std::vector< std::shared_ptr<std::mutex> >& node_mtx, std::vector< std::pair<node_id_t,node_id_t> >& processed_edges, std::size_t block_start )
+    block_reader( apegrunt::Graph_ptr network, std::vector< std::vector< std::pair<node_id_t,edge_id_t> > >& node_neighborhoods, std::vector< std::shared_ptr<std::mutex> >& node_mtx, std::vector< std::pair<node_id_t,node_id_t> >& edges_block, std::size_t block_start )
     : m_network(network),
       m_node_neighborhoods(node_neighborhoods),
       m_node_mtx(node_mtx),
-      m_processed_edges(processed_edges),
+      m_edges_block(edges_block),
       m_block_start(block_start),
       m_node_mtx_grouping_size(aracne::ARACNE_options::node_grouping_size())
     { }
@@ -122,7 +121,7 @@ private:
     apegrunt::Graph_ptr m_network;
     std::vector< std::shared_ptr<std::mutex> >& m_node_mtx;
     std::vector< std::vector< std::pair<node_id_t,edge_id_t> > >& m_node_neighborhoods;
-    std::vector< std::pair<node_id_t,node_id_t> >& m_processed_edges;
+    std::vector< std::pair<node_id_t,node_id_t> >& m_edges_block;
     std::size_t m_block_start;
     uint32_t m_node_mtx_grouping_size;
 
@@ -135,7 +134,7 @@ private:
         node_id_t node2 = edge.node2();
         safe_emplace_back( node1, node2, edge_idx, m_node_mtx[node1 / m_node_mtx_grouping_size] );
         safe_emplace_back( node2, node1, edge_idx, m_node_mtx[node2 / m_node_mtx_grouping_size] );
-        m_processed_edges[idx - m_block_start] = std::make_pair( node1, node2 );
+        m_edges_block[idx - m_block_start] = std::make_pair( node1, node2 );
     }
 
     // Thread-safe emplace_back.
@@ -148,47 +147,41 @@ private:
 
 };
 
-// Condenses information about processed edges into an easily accessible map.
+// Maps information about read edges.
+// An affected_nodes pair encodes node index in its first element and number of new elements in that node's neighborhood in its second element.
 template< typename NodeIdT >
-class processed_nodes_mapper
+class affected_nodes_mapper
 {
 public:
 
     using node_id_t = NodeIdT;
     
-    processed_nodes_mapper( const std::vector< std::pair<node_id_t,node_id_t> >& processed_edges, tbb::concurrent_unordered_map<node_id_t,node_id_t>& processed_nodes ) : m_processed_edges(processed_edges), m_processed_nodes(processed_nodes) { }
+    affected_nodes_mapper( const std::vector< std::pair<node_id_t,node_id_t> >& edges_block ) : m_edges_block(edges_block) { }
 
-    #ifndef SPYDRPICK_NO_TBB
-    void operator()( tbb::blocked_range<std::size_t>& r ) const
+    void operator()( std::size_t begin, std::size_t end ) 
     {
-        for( auto processed_edge_idx = r.begin(); processed_edge_idx < r.end(); ++processed_edge_idx ) { process_edge( m_processed_edges[processed_edge_idx] ); }
+        for( auto processed_edge_idx = begin; processed_edge_idx < end; ++processed_edge_idx ) { process_edge( m_edges_block[processed_edge_idx] ); }
     }
-    #else
-    void operator()( std::size_t begin, std::size_t end ) const
-    {
-        for( auto processed_edge_idx = begin; processed_edge_idx < end; ++processed_edge_idx ) { process_edge( m_processed_edges[processed_edge_idx] ); }
-    }
-    #endif // #ifndef SPYDRPICK_NO_TBB
 
-    std::vector< std::pair<node_id_t,node_id_t> > get_processed_nodes_vector()
+    std::vector< std::pair<node_id_t,node_id_t> > get_affected_nodes_vector()
     {
-        std::vector< std::pair<node_id_t,node_id_t> > processed_nodes_vector;
-        processed_nodes_vector.reserve( m_processed_nodes.size() );
-        for( auto processed_node : m_processed_nodes )
+        std::vector< std::pair<node_id_t,node_id_t> > affected_nodes_vector;
+        affected_nodes_vector.reserve( m_affected_nodes.size() );
+        for( auto affected_node : m_affected_nodes )
         {
-            processed_nodes_vector.emplace_back( processed_node );
+            affected_nodes_vector.emplace_back( affected_node );
         }
-        return processed_nodes_vector;
+        return affected_nodes_vector;
     }
 
 private:
-    const std::vector< std::pair<node_id_t,node_id_t> >& m_processed_edges;
-    tbb::concurrent_unordered_map<node_id_t,node_id_t>& m_processed_nodes; // Default-initializes.
+    const std::vector< std::pair<node_id_t,node_id_t> >& m_edges_block;
+    std::unordered_map<node_id_t,node_id_t> m_affected_nodes; // Default-initializes.
 
-    inline void process_edge( std::pair<node_id_t,node_id_t> processed_edge ) const
+    inline void process_edge( std::pair<node_id_t,node_id_t> processed_edge )
     {
-        ++m_processed_nodes[processed_edge.first];
-        ++m_processed_nodes[processed_edge.second];
+        ++m_affected_nodes[processed_edge.first];
+        ++m_affected_nodes[processed_edge.second];
     }
 
 };
@@ -200,32 +193,32 @@ public:
     using node_id_t = NodeIdT;
     using edge_id_t = EdgeIdT;
 
-    block_sorter( std::vector< std::vector< std::pair<node_id_t,edge_id_t> > >& node_neighborhoods, const std::vector< std::pair<node_id_t,node_id_t> >& processed_nodes )
+    block_sorter( std::vector< std::vector< std::pair<node_id_t,edge_id_t> > >& node_neighborhoods, const std::vector< std::pair<node_id_t,node_id_t> >& affected_nodes )
     : m_node_neighborhoods(node_neighborhoods),
-      m_processed_nodes(processed_nodes)
+      m_affected_nodes(affected_nodes)
     { }
 
     // Re-sorts node neighborhood after new block of edges was added.
     #ifndef SPYDRPICK_NO_TBB
     inline void operator()( tbb::blocked_range<std::size_t>& r ) const
     {
-        for( auto idx = r.begin(); idx < r.end(); ++idx) { process_node( m_processed_nodes[idx] ); }
+        for( auto idx = r.begin(); idx < r.end(); ++idx) { process_node( m_affected_nodes[idx] ); }
     }
     #else
     inline void operator()( std::size_t start, std::size_t end ) const
     {
-        for( auto idx = start; idx < end; ++idx) { process_node( m_processed_nodes[idx] ); }
+        for( auto idx = start; idx < end; ++idx) { process_node( m_affected_nodes[idx] ); }
     }
     #endif // #ifndef SPYDRPICK_NO_TBB
 
 private:
     std::vector< std::vector< std::pair<node_id_t,edge_id_t> > >& m_node_neighborhoods;
-    const std::vector< std::pair<node_id_t,node_id_t> >& m_processed_nodes;
+    const std::vector< std::pair<node_id_t,node_id_t> >& m_affected_nodes;
 
-    inline void process_node( std::pair<node_id_t,node_id_t> processed_node ) const
+    inline void process_node( std::pair<node_id_t,node_id_t> affected_node ) const
     {
-        node_id_t node = processed_node.first;
-        node_id_t new_elements = processed_node.second;
+        node_id_t node = affected_node.first;
+        node_id_t new_elements = affected_node.second;
         custom_sort( m_node_neighborhoods[node], new_elements );
     }
 
@@ -412,15 +405,15 @@ void aracne( const apegrunt::Graph_ptr input_graph )
 
     // Setup timers.
     stopwatch::stopwatch steptimer( ARACNE_options::verbose() ? ARACNE_options::get_out_stream() : nullptr );
-    stopwatch::stopwatch edgestimer( debug ? ARACNE_options::get_out_stream() : nullptr );
+    stopwatch::stopwatch readtimer( debug ? ARACNE_options::get_out_stream() : nullptr );
     stopwatch::stopwatch sorttimer( debug ? ARACNE_options::get_out_stream() : nullptr );
     stopwatch::stopwatch processtimer( debug ? ARACNE_options::get_out_stream() : nullptr );
 
     // Debug counters.
-    uint64_t time_edges = 0;
+    uint64_t time_read = 0;
     uint64_t time_sort = 0;
     uint64_t time_process = 0;
-    uint64_t time_edges_global = 0;
+    uint64_t time_read_global = 0;
     uint64_t time_sort_global = 0;
     uint64_t time_process_global = 0;
 
@@ -439,33 +432,28 @@ void aracne( const apegrunt::Graph_ptr input_graph )
         std::size_t block_end = std::min( block_start + block_size, (std::size_t) n_edges );
 
         // Read next block of edges into neighborhood vector. Trusts that network contains no duplicate edges.
-        edgestimer.start(); // Debug timer.
-        std::vector< std::pair<node_id_t,node_id_t> > processed_edges( block_end - block_start );
-        auto reader = block_reader<node_id_t,edge_id_t>( remapped_input_graph, node_neighborhoods, node_mtx, processed_edges, block_start );
+        readtimer.start(); // Debug timer.
+        std::vector< std::pair<node_id_t,node_id_t> > edges_block( block_end - block_start );
+        auto reader = block_reader<node_id_t,edge_id_t>( remapped_input_graph, node_neighborhoods, node_mtx, edges_block, block_start );
         #ifndef SPYDRPICK_NO_TBB
         tbb::parallel_for( tbb::blocked_range<std::size_t>( block_start, block_end ), reader );
         #else
         reader( block_start, block_end ); // Single-threaded.
         #endif // #ifndef SPYDRPICK_NO_TBB
-        edgestimer.stop();
-        time_edges += edgestimer.elapsed_time();
+        // Map read edges into affected nodes.
+        auto nodes_mapper = affected_nodes_mapper<node_id_t>( edges_block );
+        nodes_mapper( 0, edges_block.size() );
+        std::vector< std::pair<node_id_t,node_id_t> > affected_nodes_vector = nodes_mapper.get_affected_nodes_vector();
+        readtimer.stop();
+        time_read += readtimer.elapsed_time();
 
         // Re-sorts node neighborhoods after new block of edges was added.
         sorttimer.start(); // Debug timer.
-        // Map processed edges into processed nodes.
-        tbb::concurrent_unordered_map<node_id_t,node_id_t> processed_nodes;
-        auto nodes_mapper = processed_nodes_mapper<node_id_t>( processed_edges, processed_nodes );
+        auto sorter = block_sorter<node_id_t,edge_id_t>( node_neighborhoods, affected_nodes_vector );
         #ifndef SPYDRPICK_NO_TBB
-        tbb::parallel_for( tbb::blocked_range<std::size_t>( 0, processed_edges.size() ), nodes_mapper );
+        tbb::parallel_for( tbb::blocked_range<std::size_t>( 0, affected_nodes_vector.size() ), sorter );
         #else
-        nodes_mapper( 0, processed_edges.size() );
-        #endif // #ifndef SPYDRPICK_NO_TBB
-        std::vector< std::pair<node_id_t,node_id_t> > processed_nodes_vector = nodes_mapper.get_processed_nodes_vector();
-        auto sorter = block_sorter<node_id_t,edge_id_t>( node_neighborhoods, processed_nodes_vector );
-        #ifndef SPYDRPICK_NO_TBB
-        tbb::parallel_for( tbb::blocked_range<std::size_t>( 0, processed_nodes_vector.size() ), sorter );
-        #else
-        sorter( 0, processed_nodes_vector.size() );
+        sorter( 0, affected_nodes_vector.size() );
         #endif // #ifndef SPYDRPICK_NO_TBB
         sorttimer.stop();
         time_sort += sorttimer.elapsed_time();
@@ -498,18 +486,18 @@ void aracne( const apegrunt::Graph_ptr input_graph )
                 << block_start << ", " << block_end << ") time=" << stopwatch::time_string( steptimer.elapsed_time() ) << "\n";
             if( debug )
             {
-                oss << "  (Debug) reading blocks " << stopwatch::time_string( time_edges + time_sort )
-                    << " (processing " << stopwatch::time_string( time_edges ) 
+                oss << "  (Debug) reading blocks " << stopwatch::time_string( time_read + time_sort )
+                    << " (processing " << stopwatch::time_string( time_read ) 
                     << " + sorting " << stopwatch::time_string( time_sort ) 
                     << "), processing blocks " << stopwatch::time_string( time_process ) << '\n';
             }
             *aracne::ARACNE_options::get_out_stream() << oss.str();
             verbose_previous_block_start = block_end;
             steptimer.start();
-            time_edges_global += time_edges;
+            time_read_global += time_read;
             time_sort_global += time_sort;
             time_process_global += time_process;
-            time_edges = 0;
+            time_read = 0;
             time_sort = 0;
             time_process = 0;
         }
@@ -531,8 +519,8 @@ void aracne( const apegrunt::Graph_ptr input_graph )
     }
 
     if( debug ){
-        *aracne::ARACNE_options::get_out_stream() << "  (DEBUG) TOTAL reading blocks " << stopwatch::time_string( time_edges_global + time_sort_global )
-            << " (processing " << stopwatch::time_string( time_edges_global ) 
+        *aracne::ARACNE_options::get_out_stream() << "  (DEBUG) TOTAL reading blocks " << stopwatch::time_string( time_read_global + time_sort_global )
+            << " (processing " << stopwatch::time_string( time_read_global ) 
             << " + sorting " << stopwatch::time_string( time_sort_global ) 
             << "), processing blocks " << stopwatch::time_string( time_process_global ) << '\n';
     }
