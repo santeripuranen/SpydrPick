@@ -294,7 +294,7 @@ private:
             auto& edge3 = (*m_network)[edge_pair.second];
             real_t mi2 = edge2.weight();
             real_t mi3 = edge3.weight();
-            real_t midval = std::max<real_t>( std::min<real_t>(mi1, mi2), std::min<real_t>(mi2, mi3) );
+            real_t midval = std::max<real_t>( std::min<real_t>(mi1, mi2), std::min<real_t>( std::max<real_t>(mi1, mi2), mi3 ) );
             real_t minval = std::min<real_t>( mi1, std::min<real_t>(mi2, mi3) );
             if( midval - minval >= m_threshold )
             {
