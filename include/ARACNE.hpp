@@ -251,11 +251,12 @@ public:
     using edge_id_t = EdgeIdT;
     using real_t = RealT;
 
-    block_processor( apegrunt::Graph_ptr network, std::vector< std::vector< std::pair<node_id_t,edge_id_t> > >& node_neighborhoods, double threshold, std::size_t block_start )
+    block_processor( apegrunt::Graph_ptr network, std::vector< std::vector< std::pair<node_id_t,edge_id_t> > >& node_neighborhoods, double threshold, std::size_t block_start, std::vector<std::vector<std::size_t>>& indirect_edges )
     : m_network(network),
       m_node_neighborhoods(node_neighborhoods),
       m_threshold(threshold),
-      m_block_start(block_start)
+      m_block_start(block_start),
+      m_indirect_edges(indirect_edges)
     { }
 
     #ifndef SPYDRPICK_NO_TBB
@@ -272,11 +273,24 @@ public:
     }
     #endif // #ifndef SPYDRPICK_NO_TBB
 
+    // Handle setting indirect edges in a single thread.
+    void set_indirect_edges()
+    {
+        for( const auto& vec : m_indirect_edges )
+        {
+            for( std::size_t edge_idx : vec )
+            {
+                (*m_network)[edge_idx].set();
+            }
+        }
+    }
+
 private:
     const double m_threshold;
     const std::size_t m_block_start;
     apegrunt::Graph_ptr m_network;
     std::vector< std::vector< std::pair<node_id_t,edge_id_t> > >& m_node_neighborhoods;
+    std::vector<std::vector<std::size_t>>& m_indirect_edges;
 
     // Process a single edge.
     inline void process_edge( std::size_t edge_idx ) const
@@ -298,10 +312,13 @@ private:
             real_t minval = std::min<real_t>( mi1, std::min<real_t>(mi2, mi3) );
             if( midval - minval >= m_threshold )
             {
-                // Thread-safe because of atomic operation(s).
-                if( mi1 == minval ) { edge1.set(); }
-                if( mi2 == minval ) { edge2.set(); }
-                if( mi3 == minval ) { edge3.set(); }
+                // if( mi1 == minval ) { edge1.set(); }
+                // if( mi2 == minval ) { edge2.set(); }
+                // if( mi3 == minval ) { edge3.set(); }
+                auto& vec = m_indirect_edges[edge_idx - m_block_start];
+                if( mi1 == minval ) { if ( std::find(vec.begin(), vec.end(), edge_idx) == vec.end() ) vec.push_back( edge_idx ); }
+                if( mi2 == minval ) { if ( std::find(vec.begin(), vec.end(), edge_pair.first) == vec.end() ) vec.push_back( edge_pair.first ); }
+                if( mi3 == minval ) { if ( std::find(vec.begin(), vec.end(), edge_pair.second) == vec.end() ) vec.push_back( edge_pair.second ); }
             }
         }
     }
@@ -468,12 +485,14 @@ void aracne( const apegrunt::Graph_ptr input_graph )
             // Move back to the start of the sequence and reprocess.
             while( block_start_fixed > 0 && (*remapped_input_graph)[block_start_fixed - 1].weight() == (*remapped_input_graph)[block_start].weight() ) { --block_start_fixed; }
         }
-        auto processor = block_processor<node_id_t,edge_id_t,real_t>( remapped_input_graph, node_neighborhoods, threshold, block_start_fixed );
+        std::vector<std::vector<std::size_t>> indirect_edges( block_end - block_start ); // Container for indirect edges to be set.
+        auto processor = block_processor<node_id_t,edge_id_t,real_t>( remapped_input_graph, node_neighborhoods, threshold, block_start_fixed, indirect_edges );
         #ifndef SPYDRPICK_NO_TBB
         tbb::parallel_for( tbb::blocked_range<std::size_t>( block_start_fixed, block_end ), processor );
         #else
         processor( block_start_fixed, block_end ); // Single-threaded.
         #endif
+        processor.set_indirect_edges(); // Handle setting indirect edges in a single thread.
         processtimer.stop();
         time_process += processtimer.elapsed_time();
 
