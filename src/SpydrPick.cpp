@@ -424,21 +424,25 @@ int main(int argc, char **argv)
 			cputimer.stop(); cputimer.print_timing_stats(); *SpydrPick_options::get_out_stream() << "\n";
 		}
 
-		// output alignment positions that are involved in outlier edges
-		if( SpydrPick_options::verbose() )
 		{
-			*SpydrPick_options::get_out_stream() << "SpydrPick: extract nodes involved in outlier edges"; SpydrPick_options::get_out_stream()->flush();
-		}
-		cputimer.start();
-		const auto outlier_nodes_list = apegrunt::extract_set_node_indices( network.network );
-		auto outlier_node_alignment = apegrunt::Alignment_factory< alignment_default_storage_t >().include( alignments[0], outlier_nodes_list );
-		cputimer.stop(); cputimer.print_timing_stats(); SpydrPick_options::get_out_stream()->flush();
+			// output alignment positions that are involved in outlier edges
+			if( SpydrPick_options::verbose() )
+			{
+				*SpydrPick_options::get_out_stream() << "SpydrPick: extract nodes involved in outlier edges.."; SpydrPick_options::get_out_stream()->flush();
+			}
+			cputimer.start();
+			const auto outlier_threshold = network.outlier_threshold;
+			auto outlier_nodes_list = apegrunt::extract_threshold_node_indices( network.network, [&](auto w){ return w > outlier_threshold; } );
+			outlier_nodes_list->set_id_string("outlier_nodes");
+			auto outlier_node_alignment = apegrunt::Alignment_factory< alignment_default_storage_t >().include( alignments[0], outlier_nodes_list );
+			cputimer.stop(); cputimer.print_timing_stats(); SpydrPick_options::get_out_stream()->flush();
 
-		apegrunt::output_alignment( outlier_node_alignment );
+			apegrunt::output_alignment( outlier_node_alignment );
 
-		if( SpydrPick_options::verbose() )
-		{
-			*SpydrPick_options::get_out_stream() << std::endl;
+			if( SpydrPick_options::verbose() )
+			{
+				*SpydrPick_options::get_out_stream() << std::endl;
+			}
 		}
 	}
 
