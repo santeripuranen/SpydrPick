@@ -332,7 +332,7 @@ RealT determine_MI_threshold( apegrunt::Alignment_ptr<StateT> alignment, std::si
         for( const auto edge: pairs ) { mi_solver(edge); }
         #endif // #ifndef SPYDRPICK_NO_TBB
 
-		std::nth_element( mi_values.begin(), mi_values.begin() + threshold_idx, mi_values.end() );
+        std::nth_element( mi_values.begin(), mi_values.begin() + threshold_idx, mi_values.end() );
         thresholds.push_back( mi_values[threshold_idx] );
 
         if( SpydrPick_options::verbose() ) { *SpydrPick_options::get_out_stream() << " " << cputimer; SpydrPick_options::get_out_stream()->flush(); }
