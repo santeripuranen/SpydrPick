@@ -264,6 +264,12 @@ int main(int argc, char **argv)
 			if( SpydrPick_options::verbose() ) { cputimer.print_timing_stats(); }
  		}
 
+		if( apegrunt::Apegrunt_options::output_filtered_alignment() )
+		{
+			// output alignment to file
+			apegrunt::output_alignment( alignment );
+		}
+
 		// assign sample weights (parse from file or determine automatically)
 		apegrunt::cache_sample_weights( alignment );
 
