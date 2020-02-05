@@ -322,9 +322,10 @@ RealT determine_MI_threshold( apegrunt::Alignment_ptr<StateT> alignment, std::si
     	std::vector<RealT> mi_values(threshold_pairs);
         const auto pairs = sample_pairs<node_t>( threshold_pairs, n_loci - 1 );
 
-		if( SpydrPick_options::verbose() ) { *SpydrPick_options::get_out_stream() << " | evaluate MI.."; SpydrPick_options::get_out_stream()->flush(); }
+        if( SpydrPick_options::verbose() ) { *SpydrPick_options::get_out_stream() << " | evaluate MI.."; SpydrPick_options::get_out_stream()->flush(); }
 
-		auto mi_solver = single_edge_MI_solver<state_t,node_t,real_t>( alignment, pairs, mi_values );
+        auto mi_solver = single_edge_MI_solver<state_t,node_t,real_t>( alignment, pairs, mi_values );
+
         #ifndef SPYDRPICK_NO_TBB
         tbb::parallel_for( tbb::blocked_range<std::size_t>(0, threshold_pairs), mi_solver );
         #else
