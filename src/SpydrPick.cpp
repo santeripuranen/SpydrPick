@@ -32,6 +32,7 @@
 #include "apegrunt/Apegrunt_IO_misc.hpp"
 #include "apegrunt/Loci_generators.hpp"
 #include "apegrunt/ValueVector_parser.hpp"
+#include "graph/Graph_utility.hpp"
 #include "misc/Stopwatch.hpp"
 
 #include "SpydrPick.h"
@@ -163,6 +164,15 @@ int main(int argc, char **argv)
 
 	// Check if we have the compulsory input alignment
 	if( alignments.empty() ) { exit(EXIT_FAILURE); }
+
+	// output alignments? I guess this is mostly useful for testing purposes
+	if( apegrunt::Apegrunt_options::output_alignment() )
+	{
+		for( auto alignment: alignments )
+		{
+			apegrunt::output_alignment( alignment );
+		}
+	}
 
 // /*
 	stopwatch::stopwatch steptimer( SpydrPick_options::verbose() ? SpydrPick_options::get_out_stream() : nullptr ); // for timing statistics
@@ -412,6 +422,23 @@ int main(int argc, char **argv)
 			}
 
 			cputimer.stop(); cputimer.print_timing_stats(); *SpydrPick_options::get_out_stream() << "\n";
+		}
+
+		// output alignment positions that are involved in outlier edges
+		if( SpydrPick_options::verbose() )
+		{
+			*SpydrPick_options::get_out_stream() << "SpydrPick: extract nodes involved in outlier edges"; SpydrPick_options::get_out_stream()->flush();
+		}
+		cputimer.start();
+		const auto outlier_nodes_list = apegrunt::extract_set_node_indices( network.network );
+		auto outlier_node_alignment = apegrunt::Alignment_factory< alignment_default_storage_t >().include( alignments[0], outlier_nodes_list );
+		cputimer.stop(); cputimer.print_timing_stats(); SpydrPick_options::get_out_stream()->flush();
+
+		apegrunt::output_alignment( outlier_node_alignment );
+
+		if( SpydrPick_options::verbose() )
+		{
+			*SpydrPick_options::get_out_stream() << std::endl;
 		}
 	}
 
