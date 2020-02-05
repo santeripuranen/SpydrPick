@@ -295,6 +295,8 @@ RealT determine_MI_threshold( apegrunt::Alignment_ptr<StateT> alignment, std::si
 	using state_t = StateT;
 	using node_t = std::size_t;
 
+    stopwatch::stopwatch cputimer( SpydrPick_options::verbose() ? SpydrPick_options::get_out_stream() : nullptr ); // for timing statistics
+
     const auto n_loci = alignment->n_loci();
     const std::size_t threshold_iterations = SpydrPick_options::get_mi_threshold_iterations();
 
@@ -307,28 +309,37 @@ RealT determine_MI_threshold( apegrunt::Alignment_ptr<StateT> alignment, std::si
     if( SpydrPick_options::verbose() )
     {
         *SpydrPick_options::get_out_stream() << " (" << threshold_pairs << " pairs * " << SpydrPick_options::get_mi_threshold_iterations() << " iterations)\n";
+        SpydrPick_options::get_out_stream()->flush();
     }
 
     std::vector<RealT> thresholds;
 
-    const auto verbose = SpydrPick_options::verbose();
-    //SpydrPick_options::set_verbose( false );
-
     for( std::size_t iter=0; iter<threshold_iterations; ++iter )
     {
+    	if( SpydrPick_options::verbose() ) { *SpydrPick_options::get_out_stream() << "\rSpydrPick: " << std::setw(2) << std::setfill(' ') << iter+1 << "/" << SpydrPick_options::get_mi_threshold_iterations() << " | sample pairs.."; SpydrPick_options::get_out_stream()->flush(); }
+
+    	cputimer.start();
     	std::vector<RealT> mi_values(threshold_pairs);
         const auto pairs = sample_pairs<node_t>( threshold_pairs, n_loci - 1 );
-        auto mi_solver = single_edge_MI_solver<state_t,node_t,real_t>( alignment, pairs, mi_values );
+
+		if( SpydrPick_options::verbose() ) { *SpydrPick_options::get_out_stream() << " | evaluate MI.."; SpydrPick_options::get_out_stream()->flush(); }
+
+		auto mi_solver = single_edge_MI_solver<state_t,node_t,real_t>( alignment, pairs, mi_values );
         #ifndef SPYDRPICK_NO_TBB
         tbb::parallel_for( tbb::blocked_range<std::size_t>(0, threshold_pairs), mi_solver );
         #else
         for( const auto edge: pairs ) { mi_solver(edge); }
         #endif // #ifndef SPYDRPICK_NO_TBB
-        std::nth_element( mi_values.begin(), mi_values.begin() + threshold_idx, mi_values.end() );
-        thresholds.push_back( mi_values[threshold_idx] );
-    }
 
-    SpydrPick_options::set_verbose( verbose );
+		std::nth_element( mi_values.begin(), mi_values.begin() + threshold_idx, mi_values.end() );
+        thresholds.push_back( mi_values[threshold_idx] );
+
+        if( SpydrPick_options::verbose() ) { *SpydrPick_options::get_out_stream() << " " << cputimer; SpydrPick_options::get_out_stream()->flush(); }
+    }
+    if( SpydrPick_options::verbose() )
+    {
+        *SpydrPick_options::get_out_stream() << "\n"; SpydrPick_options::get_out_stream()->flush();
+    }
 
     std::size_t median_idx = thresholds.size() / 2 - ( thresholds.size() % 2 ? 0 : 1 );
     auto nth = thresholds.begin() + median_idx;
