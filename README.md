@@ -1,7 +1,7 @@
 ## Get SpydrPick
 
 #### Bioconda
-[![Install with Bioconda](https://img.shields.io/badge/install%20with-bioconda-brightgreen.svg?style=flat)](http://bioconda.github.io/recipes/spydrpick/README.html) ![Supported platforms](https://anaconda.org/bioconda/spydrpick/badges/platforms.svg)
+[![Install with Bioconda](https://img.shields.io/badge/install%20with-bioconda-brightgreen.svg?style=flat)](http://bioconda.github.io/recipes/spydrpick/README.html) ![Supported platforms](https://anaconda.org/bioconda/spydrpick/badges/platforms.svg) [![Anaconda-Server Badge](https://anaconda.org/bioconda/spydrpick/badges/version.svg)](https://anaconda.org/bioconda/spydrpick)
 ```
 conda install -c bioconda spydrpick
 ```
