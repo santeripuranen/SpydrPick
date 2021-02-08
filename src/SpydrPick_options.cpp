@@ -1,6 +1,6 @@
 /** @file SpydrPick_options.cpp
 
-	Copyright (c) 2017-2019 Santeri Puranen.
+	Copyright (c) 2017-2021 Santeri Puranen.
 
 	This program is free software: you can redistribute it and/or modify
 	it under the terms of the GNU Affero General Public License as
@@ -62,8 +62,16 @@ const std::string SpydrPick_options::s_version_string(
 	"AVX2"
 #elif __AVX__
 	"AVX"
+#elif __SSE3__
+	"SSE3"
+#ifdef __POPCNT__
+	+"+POPCNT"
+#endif // __POPCNT__
 #elif __SSE2__
 	"SSE2"
+#ifdef __POPCNT__
+	+"+POPCNT"
+#endif // __POPCNT__
 #else
 	"generic"
 #endif
@@ -71,12 +79,12 @@ const std::string SpydrPick_options::s_version_string(
 );
 
 const std::string SpydrPick_options::s_copyright_notice(
-	std::string("Copyright (c) 2018-2019 Santeri Puranen and Juri Kuronen\nLicensed under the GNU Affero General Public License version 3.\n\n")
+	std::string("Copyright (c) 2018-2021 Santeri Puranen and Juri Kuronen\nLicensed under the GNU Affero General Public License version 3.\n\n")
 	+ "THIS SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND."
 );
 
 const std::string SpydrPick_options::s_long_copyright_notice(
-	std::string("Copyright (c) 2018-2019 Santeri Puranen\nLicensed under the GNU Affero General Public License version 3.\n\n")
+	std::string("Copyright (c) 2018-2021 Santeri Puranen\nLicensed under the GNU Affero General Public License version 3.\n\n")
 	+ "This program is free software: you can redistribute it and/or modify\n"
     + "it under the terms of the GNU Affero General Public License as\n"
     + "published by the Free Software Foundation, either version 3 of the\n"
