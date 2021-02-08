@@ -414,30 +414,38 @@ int main(int argc, char **argv)
 			// produce output
 			if( apegrunt::Apegrunt_options::linear_genome() )
 			{
-				*(couplings_file->stream()) << Outlier_Graph_formatter<real_t,default_state_t,apegrunt::LinearDistance>(network,alignments.front());
+				*(couplings_file->stream()) << Outlier_Graph_formatter<real_t,apegrunt::LinearDistance>(network,alignments.front()->get_loci_translation(),alignments.front()->n_original_positions());
 			}
 			else
 			{
-				*(couplings_file->stream()) << Outlier_Graph_formatter<real_t,default_state_t,apegrunt::CircularDistance>(network,alignments.front());
+				*(couplings_file->stream()) << Outlier_Graph_formatter<real_t,apegrunt::CircularDistance>(network,alignments.front()->get_loci_translation(),alignments.front()->n_original_positions());
 			}
 
 			cputimer.stop(); cputimer.print_timing_stats(); *SpydrPick_options::get_out_stream() << "\n";
 		}
 
+		// output alignment positions that are involved in outlier edges
+		if( SpydrPick_options::verbose() )
 		{
-			// output alignment positions that are involved in outlier edges
-			if( SpydrPick_options::verbose() )
-			{
-				*SpydrPick_options::get_out_stream() << "SpydrPick: extract nodes involved in outlier edges.."; SpydrPick_options::get_out_stream()->flush();
-			}
-			cputimer.start();
-			const auto outlier_threshold = network.outlier_threshold;
-			auto outlier_nodes_list = apegrunt::extract_threshold_node_indices( network.network, [&](auto w){ return w > outlier_threshold; } );
-			outlier_nodes_list->set_id_string("outlier_nodes");
-			auto outlier_node_alignment = apegrunt::Alignment_factory< alignment_default_storage_t >().include( alignments[0], outlier_nodes_list );
-			cputimer.stop(); cputimer.print_timing_stats(); SpydrPick_options::get_out_stream()->flush();
+			*SpydrPick_options::get_out_stream() << "SpydrPick: extract nodes involved in outlier edges:"; SpydrPick_options::get_out_stream()->flush();
+		}
+		cputimer.start();
+		{ // extract outlier node indices
+			const auto outlier_node_list = apegrunt::extract_node_indices( network.network, [=](const auto& edge){ return edge.weight() >= network.outlier_threshold; } );
+			*SpydrPick_options::get_out_stream() << " found " << outlier_node_list->size() << " edges\n";
+			SpydrPick_options::get_out_stream()->flush();
 
-			apegrunt::output_alignment( outlier_node_alignment );
+			if( outlier_node_list->size() < alignments[0]->n_loci() && outlier_node_list->size() != 0 )
+			{
+				auto outlier_node_alignment = apegrunt::Alignment_factory< alignment_default_storage_t >().include( alignments[0], outlier_node_list );
+				cputimer.stop(); cputimer.print_timing_stats(); SpydrPick_options::get_out_stream()->flush();
+
+				if( outlier_node_alignment->n_loci() != 0 )
+				{
+					if( SpydrPick_options::verbose() ) { *SpydrPick_options::get_out_stream() << "\n"; }
+					apegrunt::output_alignment( outlier_node_alignment );
+				}
+			}
 
 			if( SpydrPick_options::verbose() )
 			{
@@ -446,11 +454,11 @@ int main(int argc, char **argv)
 		}
 	}
 
-
 	if( SpydrPick_options::verbose() )
 	{
 		*SpydrPick_options::get_out_stream() << "SpydrPick: analysis completed\n";
 		globaltimer.stop(); globaltimer.print_timing_stats();
+		SpydrPick_options::get_out_stream()->flush();
 	}
 
 	exit(EXIT_SUCCESS);
