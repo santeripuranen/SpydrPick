@@ -11,7 +11,7 @@ include_directories(
 	${APEGRUNT_INCLUDE_DIR}
 	$(ARACNE_INCLUDE_DIR)
 	${CMAKE_CURRENT_BINARY_DIR}
-	${Boost_INCLUDE_DIR}
+	${Boost_INCLUDE_DIRS}
 	${TBB_INCLUDE_DIRS}
 )
 
@@ -31,19 +31,20 @@ set( SPYDRPICK_SOURCES
 set( CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin )
 
 ### General optimization flags	
-set( SPYDRPICK_OPTIMIZATION_FLAGS "${SPYDRPICK_OPTIMIZATION_FLAGS} -O3 -msse3 -mpopcnt -static-libstdc++" )
+set( SPYDRPICK_OPTIMIZATION_FLAGS "${SPYDRPICK_OPTIMIZATION_FLAGS} -msse3 -mpopcnt -static-libstdc++" )
 set( SPYDRPICK_OPTIMIZATION_FLAGS "${SPYDRPICK_OPTIMIZATION_FLAGS} -ftree-vectorize -fwhole-program" )
 set( SPYDRPICK_OPTIMIZATION_FLAGS "${SPYDRPICK_OPTIMIZATION_FLAGS} -flto -ffat-lto-objects" ) # -flto-report" )
+#set( CMAKE_CXX_FLAGS "${SPYDRPICK_OPTIMIZATION_FLAGS}" )
 
 # GCC-specific optimization flags
-set( SPYDRPICK_GCC_OPTIMIZATION_FLAGS "${SPYDRPICK_GCC_OPTIMIZATION_FLAGS}" )
+set( SPYDRPICK_GCC_OPTIMIZATION_FLAGS "${SPYDRPICK_OPTIMIZATION_FLAGS}" )
 
 # Clang-specific optimization flags
-set( SPYDRPICK_CLANG_OPTIMIZATION_FLAGS "${SPYDRPICK_CLANG_OPTIMIZATION_FLAGS}" )
+set( SPYDRPICK_CLANG_OPTIMIZATION_FLAGS "${SPYDRPICK_OPTIMIZATION_FLAGS}" )
 
 
 ### General release build flags
-set( SPYDRPICK_RELEASE_FLAGS "-Wall -w -DNDEBUG -fvisibility=hidden -fvisibility-inlines-hidden" )
+set( SPYDRPICK_RELEASE_FLAGS "-Wall -w -fvisibility=hidden -fvisibility-inlines-hidden" ) # CMake will add '-O3 -DNDEBUG'
 
 # GCC-specific release build flags
 set( SPYDRPICK_GCC_RELEASE_FLAGS "-Wl,--strip-all" )

@@ -67,13 +67,13 @@ struct MI_network
 	real_t extreme_outlier_threshold;
 };
 
-template< typename RealT, typename StateT, typename DistanceT=apegrunt::LinearDistance >
+template< typename RealT, typename DistanceT=apegrunt::LinearDistance >
 struct Outlier_Graph_formatter
 {
-	Outlier_Graph_formatter( MI_network<RealT>& graph, const apegrunt::Alignment_ptr<StateT>& alignment ) //, std::size_t (*	const distance)(std::size_t,std::size_t) )
+	Outlier_Graph_formatter( MI_network<RealT>& graph, const apegrunt::Loci_ptr loci_translation, std::size_t n_original_positions )
 	: m_graph(graph),
-	  m_alignment(alignment),
-	  m_distance(alignment->n_original_positions())
+	  m_translation(loci_translation),
+	  m_distance(n_original_positions)
 	{
 		m_graph.network_wo_gaps->sort( []( const auto& a, const auto& b ) { return a.id() < b.id(); } );
 	}
@@ -83,24 +83,18 @@ struct Outlier_Graph_formatter
 		return m_distance(pos1,pos2);
 	}
 	MI_network<RealT> m_graph;
-	const apegrunt::Alignment_ptr<StateT> m_alignment;
+	const apegrunt::Loci_ptr m_translation;
 	DistanceT m_distance;
 };
 
-template< typename RealT, typename StateT, typename Distance >
-static std::ostream& operator<< ( std::ostream& os, const Outlier_Graph_formatter<RealT,StateT,Distance>& ogf )
+template< typename RealT, typename Distance >
+static std::ostream& operator<< ( std::ostream& os, const Outlier_Graph_formatter<RealT,Distance>& ogf )
 {
-	//using std::begin; using std::end;
-	//using apegrunt::begin; using apegrunt::end;
-
-	const auto& index_translation = *(ogf.m_alignment->get_loci_translation());
+	const auto& index_translation = *(ogf.m_translation);
 	const std::size_t base_index = apegrunt::Apegrunt_options::get_output_indexing_base();
 	const auto outlier_threshold = ogf.m_graph.outlier_threshold;
 	const auto extreme_outlier_threshold = ogf.m_graph.extreme_outlier_threshold;
 	const auto ld_threshold = SpydrPick_options::get_ld_threshold();
-
-	//std::cout << "graph_wo_gaps.size()=" << ogf.m_graph.network_wo_gaps->size() << std::endl;
-	//std::cout << *ogf.m_graph.network_wo_gaps << std::endl;
 
 	for( const auto& edge: *(ogf.m_graph.network) )
 	{
