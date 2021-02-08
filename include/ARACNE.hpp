@@ -1,6 +1,6 @@
-/** @file aracne.hpp
+/** @file ARACNE.hpp
 
-	Copyright (c) 2018 Juri Kuronen and Santeri Puranen.
+	Copyright (c) 2018-2021 Juri Kuronen and Santeri Puranen.
 
 	This program is free software: you can redistribute it and/or modify
 	it under the terms of the GNU Affero General Public License as
@@ -207,7 +207,7 @@ public:
     #else
     inline void operator()( std::size_t start, std::size_t end ) const
     {
-        for( auto idx = start; idx < end; ++idx) { process_node( m_affected_nodes[idx] ); }
+        for( auto idx = start; idx < end; ++idx) { process_node( m_affected_nodes[idx] ); }
     }
     #endif // #ifndef SPYDRPICK_NO_TBB
 
@@ -511,6 +511,7 @@ void aracne( const apegrunt::Graph_ptr input_graph )
                     << "), processing blocks " << stopwatch::time_string( time_process ) << '\n';
             }
             *aracne::ARACNE_options::get_out_stream() << oss.str();
+            aracne::ARACNE_options::get_out_stream()->flush();
             verbose_previous_block_start = block_end;
             steptimer.start();
             time_read_global += time_read;
@@ -543,6 +544,7 @@ void aracne( const apegrunt::Graph_ptr input_graph )
             << " + sorting " << stopwatch::time_string( time_sort_global ) 
             << "), processing blocks " << stopwatch::time_string( time_process_global ) << '\n';
     }
+    aracne::ARACNE_options::get_out_stream()->flush();
 }
 
 void run_ARACNE( apegrunt::Graph_ptr network )
