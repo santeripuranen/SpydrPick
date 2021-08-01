@@ -29,6 +29,7 @@
 #include <unordered_set>
 
 #include <boost/functional/hash/hash.hpp>
+#include <boost/range/irange.hpp>
 
 #ifndef SPYDRPICK_NO_TBB // Threading with Threading Building Blocks
 #pragma message("Compiling with TBB support")
@@ -46,8 +47,6 @@
 #include "apegrunt/Alignment_utility.hpp"
 #include "apegrunt/Loci.h"
 #include "apegrunt/Distance.hpp"
-
-#include "misc/Matrix_math.hpp" // apegrunt
 
 #include "graph/Graph.hpp" // apegrunt
 #include "graph/Graph_output_format.hpp" // apegrunt
@@ -132,10 +131,10 @@ static std::ostream& operator<< ( std::ostream& os, const Outlier_Graph_formatte
 template< typename RealT, typename StateT >
 MI_network<RealT> get_MI_network( std::vector< apegrunt::Alignment_ptr<StateT> >& alignments, RealT mi_threshold=0.0 )
 {
-	using state_t = StateT;
+	//using state_t = StateT;
 	using apegrunt::cbegin; using apegrunt::cend;
 
-	const auto n_loci = alignments.front()->n_loci();
+	//const auto n_loci = alignments.front()->n_loci();
 	auto block_indices = alignments.front()->get_block_indices();
 	auto block_range = boost::make_iterator_range( cbegin(block_indices), cend(block_indices) );
 
@@ -176,7 +175,7 @@ std::vector< std::pair<NodeT,NodeT> > sample_pairs( std::size_t threshold_pairs,
     std::unordered_set< pair_t, boost::hash<pair_t> > pairs_set;
 
     // Initialize random number generator.
-    std::mt19937 gen(std::chrono::high_resolution_clock::now().time_since_epoch().count());
+    std::mt19937 gen(std::chrono::steady_clock::now().time_since_epoch().count());
     std::uniform_int_distribution<NodeT> dist(0, max_range);
 
     // Sample unique pairs.
@@ -258,7 +257,7 @@ struct single_edge_MI_solver
 template< typename RealT  >
 inline std::size_t determine_threshold_pairs( std::size_t threshold_pairs, std::size_t possible_pairs, RealT threshold_percentile )
 {
-    using real_t = RealT;
+ //   using real_t = RealT;
 
     if( threshold_pairs == 0 )
     {
@@ -306,6 +305,7 @@ RealT determine_MI_threshold( apegrunt::Alignment_ptr<StateT> alignment, std::si
         SpydrPick_options::get_out_stream()->flush();
     }
 
+    //std::atomic_size_t pairs(0);
     std::vector<RealT> thresholds;
 
     for( std::size_t iter=0; iter<threshold_iterations; ++iter )
