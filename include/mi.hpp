@@ -33,7 +33,7 @@
 #include "apegrunt/aligned_allocator.hpp"
 #include "apegrunt/Distance.hpp"
 
-#include "misc/Coincidence_matrix.hpp"
+#include "misc/Crosstable.hpp"
 #include "misc/Matrix_kernel_access_order.hpp"
 #include "misc/Vector.h"
 
@@ -71,10 +71,14 @@ public:
 	using AccessOrder = apegrunt::MATRICES_AccessOrder_tag<N>;
 	enum { BlockSize=apegrunt::StateBlock_size };
 
+	using edge_t = apegrunt::EdgeID<true>;
+
 	mutual_information_block_kernel( apegrunt::Alignment_ptr<state_t> alignment, const std::shared_ptr< std::vector<real_t> > weights, real_t mi_threshold, real_t pseudocount=0.5 )
 	: m_alignment(alignment),
+	  m_buffer( N*N*BlockSize*BlockSize ),
 	  m_weights(weights),
-	  m_buffer( N*N*BlockSize ),
+	  m_kernel( apegrunt::Weighted_crosstable_2Dblock<state_t,real_t>( alignment, weights, 0.0 ) ),
+	  m_cached_xtable_id(0,0),
 	  m_mi_threshold(mi_threshold),
 	  m_pseudocount(pseudocount),
 	  m_nloci(alignment->n_loci()),
@@ -87,8 +91,10 @@ public:
 
 	mutual_information_block_kernel( const my_type& other )
 	: m_alignment( other.m_alignment ),
+	  m_buffer( N*N*BlockSize*BlockSize ),
 	  m_weights( other.m_weights ),
-	  m_buffer( N*N*BlockSize ),
+	  m_kernel( other.m_kernel ),
+	  m_cached_xtable_id(0,0),
 	  m_mi_threshold( other.m_mi_threshold ),
 	  m_pseudocount( other.m_pseudocount ),
 	  m_nloci( other.m_nloci ),
@@ -98,324 +104,131 @@ public:
 	  m_neff( other.m_neff )
 	{
 	}
-/*
-	// Calculates the mutual information (MI) for all iblock versus jblock data columns, producing a BlockSize-by-BlockSize dense solution matrix.
-	inline void operator()( dest_ptr_t mi_solution, std::size_t iblock, std::size_t jblock )
-    {
-		const std::size_t iblock_size = iblock == m_last_block_index ? m_last_block_size : BlockSize;
-		const std::size_t jblock_size = jblock == m_last_block_index ? m_last_block_size : BlockSize;
-		const std::size_t icol_begin = iblock*BlockSize;
-		const std::size_t icol_end = icol_begin+iblock_size;
 
-		std::vector<real_t> joint_H(iblock_size, 0.0);
-		std::vector<real_t> icond_H(iblock_size, 0.0);
-		std::vector<real_t> jcond_H(iblock_size, 0.0);
-
-		// get statecount tables
-		const auto statecount_blocks_ptr = m_alignment->get_statecount_blocks(); // keep shared_ptr alive
-		const auto& statecount_blocks = *statecount_blocks_ptr;
-		const auto& istatecounts = statecount_blocks[iblock];
-		const auto& jstatecounts = statecount_blocks[jblock];
-
-		// get statepresence tables
-		const auto statepresence_blocks_ptr = m_alignment->get_statepresence_blocks(); // keep shared_ptr alive
-		const auto& statepresence_blocks = *statepresence_blocks_ptr;
-		const auto& istatepresence = statepresence_blocks[iblock];
-		const auto& jstatepresence = statepresence_blocks[jblock];
-
-		for( std::size_t icol=icol_begin, i=0; icol<icol_end; ++icol, ++i )
-		{
-			// get the crosstable/coincidence matrix
-			auto kernel = apegrunt::weighted_coincidence_1Dblock<state_t,real_t>( m_alignment, m_weights, 0.0 );
-
-			// the coincidence kernel collects a tall 1-by-iblock_size coincidence matrix (icol versus all columns in jblock).
-			kernel( m_buffer.data(), icol, jblock );
-
-			//std::cout << "mi: normalize icol=" << icol << std::endl;
-			// normalize matrices, accounting for pseudocounts
-
-			this->normalize_and_get_jointH_icondH( m_buffer.data(), joint_H.data(), icond_H.data(), istatepresence[icol%BlockSize], jstatepresence, istatecounts[icol%BlockSize], jstatecounts, jblock_size );
-
-			//std::cout << "mi: sum_mat icol=" << icol << std::endl;
-			// given the 1-by-iblock_size coincidence matrix, calculate the joint entropy of i and j, H(i,j)
-			//this->sum_mat( joint_H.data(), istatepresence[icol%BlockSize], jstatepresence, iblock_size );
-
-			//std::cout << "mi: sum_rows icol=" << icol << std::endl;
-			// given the 1-by-iblock_size coincidence matrix, calculate the conditional entropies H(i|j)
-			//this->sum_rows( icond_H.data(), istatepresence[icol%BlockSize], jstatepresence, iblock_size );
-
-			//std::cout << "mi: sum_cols icol=" << icol << std::endl;
-			// given the 1-by-iblock_size coincidence matrix, calculate the conditional entropies H(j|i)
-			this->get_jCondH( m_buffer.data(), jcond_H.data(), istatepresence[icol%BlockSize], jstatepresence, jblock_size );
-
-			//std::cout << "mi: mi_solution icol=" << icol << std::endl;
-			// given the 1-by-iblock_size conditional and joint entropies, calculate MI as H(i,j) - H(i|j) - H(j|i)
-			//this->mi( mi_solution+BlockSize*i, joint_H.data(), icond_H.data(), jcond_H.data(), jblock_size );
-			this->mi( mi_solution+i*jblock_size, joint_H.data(), icond_H.data(), jcond_H.data(), jblock_size );
-		}
-    }
-*/
-	// Calculates the mutual information (MI) for all iblock versus jblock data columns, producing a BlockSize-by-BlockSize dense solution matrix.
 	inline void block( dest_ptr_t mi_solution, std::size_t iblock, std::size_t jblock, bool exclude_gaps=false )
     {
 		const std::size_t iblock_size = iblock == m_last_block_index ? m_last_block_size : BlockSize;
 		const std::size_t jblock_size = jblock == m_last_block_index ? m_last_block_size : BlockSize;
-		const std::size_t ipos_begin = iblock*BlockSize;
-		const std::size_t ipos_end = ipos_begin+iblock_size;
 
-		std::vector<real_t> joint_H(iblock_size, 0.0);
-		std::vector<real_t> icond_H(iblock_size, 0.0);
-		std::vector<real_t> jcond_H(iblock_size, 0.0);
-
-		// get statecount tables
-/*
-		const auto statecount_blocks_ptr = m_alignment->get_statecount_blocks(); // keep shared_ptr alive
-		const auto& statecount_blocks = *statecount_blocks_ptr;
-		const auto& istatecounts = statecount_blocks[iblock];
-		const auto& jstatecounts = statecount_blocks[jblock];
-*/
 		// get statepresence tables
 		const auto statepresence_blocks_ptr = ( exclude_gaps ? m_alignment->get_statepresence_blocks_wo_gaps() : m_alignment->get_statepresence_blocks() ); // keep shared_ptr alive
 		const auto& statepresence_blocks = *statepresence_blocks_ptr;
 		const auto& istatepresence = statepresence_blocks[iblock];
 		const auto& jstatepresence = statepresence_blocks[jblock];
 
-		std::vector<real_t> block_level_buffer(N*N*BlockSize*BlockSize, 0.0);
-		// get the crosstable/coincidence matrix
-		auto kernel = apegrunt::weighted_coincidence_2Dblock<state_t,real_t>( m_alignment, m_weights, 0.0 );
+		// get the contigency/cross-table
 
-		// the coincidence kernel collects a tall 1-by-iblock_size coincidence matrix (icol versus all columns in jblock).
-		kernel( block_level_buffer.data(), iblock, jblock );
-
-		for( std::size_t ipos=ipos_begin, i=0; ipos<ipos_end; ++ipos, ++i )
+		// the coincidence matrix is cached in m_buffer for short term reuse, e.g. for
+		// recalculating MI without the gap contribution
+		if( !bool(m_cached_xtable_id) || m_cached_xtable_id != edge_t(iblock,jblock) )
 		{
-			// normalize matrices, accounting for pseudocounts
-			this->normalize_and_get_jointH_icondH( block_level_buffer.data()+N*N*jblock_size*i, joint_H.data(), icond_H.data(), istatepresence[ipos%BlockSize], jstatepresence, jblock_size );
+			// get the crosstable/coincidence matrix
+			m_kernel( m_buffer.data(), iblock, jblock );
 
-			// given the 1-by-iblock_size coincidence matrix, calculate the conditional entropies H(j|i)
-			this->get_jCondH( block_level_buffer.data()+N*N*jblock_size*i, jcond_H.data(), istatepresence[ipos%BlockSize], jstatepresence, jblock_size );
-
-			// given the 1-by-iblock_size conditional and joint entropies, calculate MI as H(i,j) - H(i|j) - H(j|i)
-			//this->mi( mi_solution+BlockSize*i, joint_H.data(), icond_H.data(), jcond_H.data(), jblock_size );
-			this->mi( mi_solution+i*jblock_size, joint_H.data(), icond_H.data(), jcond_H.data(), jblock_size );
+			m_cached_xtable_id = edge_t(iblock,jblock,true);
+		}
+		for( std::size_t i=0; i<iblock_size; ++i )
+		{
+			// add pseudocounts, normalize and calculate mi
+			this->normalize_and_get_mi_row( m_buffer.data()+N*N*jblock_size*i, mi_solution+i*jblock_size, istatepresence[i], jstatepresence, jblock_size );
 		}
     }
 
-	inline void single( dest_ptr_t mi_solution, std::size_t ipos, std::size_t jpos )
-    {
-		const std::size_t iblock = apegrunt::get_block_index(ipos);
-		const std::size_t jblock = apegrunt::get_block_index(jpos);
+	inline void normalize_and_get_mi_row( dest_ptr_t xtables, dest_ptr_t solution,
+				statepresence_t ipresence, const statepresence_block_t& jpresence_block, std::size_t extent )
+	{
+		for( std::size_t k=0; k < extent; ++k ) // k runs over a row of crosstables
+		{
+			this->normalize_and_get_mi_single( xtables + AccessOrder::ptr_increment(0,k,extent), solution+k, ipresence, jpresence_block[k] );
+		}
+	}
 
-		real_t joint_H(0.0);
-		real_t icond_H(0.0);
-		real_t jcond_H(0.0);
-
-		// get statecount tables
-/*
-		const auto statecount_blocks_ptr = m_alignment->get_statecount_blocks(); // keep shared_ptr alive
-		const auto& statecount_blocks = *statecount_blocks_ptr;
-		const auto& istatecounts = statecount_blocks[iblock];
-		const auto& jstatecounts = statecount_blocks[jblock];
-*/
-		// get statepresence tables
-		const auto statepresence_blocks_ptr = m_alignment->get_statepresence_blocks(); // keep shared_ptr alive
-		const auto& statepresence_blocks = *statepresence_blocks_ptr;
-		const auto& istatepresence = statepresence_blocks[iblock];
-		const auto& jstatepresence = statepresence_blocks[jblock];
-
-		std::vector<real_t> block_level_buffer(N*N, 0.0);
-
-		// get the crosstable/coincidence matrix
-		auto kernel = apegrunt::weighted_coincidence_2Dblock<state_t,real_t>( m_alignment, m_weights, 0.0 );
-
-		// the coincidence kernel collects a 1-by-1 coincidence matrix (ipos versus jpos).
-		kernel.single( block_level_buffer.data(), ipos, jpos );
-
-		this->normalize_and_get_jointH_icondH_single(
-				block_level_buffer.data(),
-				&joint_H, &icond_H,
-				istatepresence[ipos%BlockSize], jstatepresence[jpos%BlockSize]			);
-
-		// given the 1-by-1 coincidence matrix, calculate the conditional entropies H(j|i)
-		this->get_jCondH_single( block_level_buffer.data(), &jcond_H, istatepresence[ipos%BlockSize], jstatepresence[jpos%BlockSize] );
-
-		// given the 1-by-1 conditional and joint entropies, calculate MI as H(i,j) - H(i|j) - H(j|i)
-		this->mi( mi_solution, &joint_H, &icond_H, &jcond_H, 1 );
-    }
-
-	inline void normalize_and_get_jointH_icondH_single(
-			dest_ptr_t buffer, dest_ptr_t jointH, dest_ptr_t icondH,
-			statepresence_t ipresence, statepresence_t jpresence		)
+	inline void normalize_and_get_mi_single(
+			dest_ptr_t buffer, dest_ptr_t solution,
+			statepresence_t ipresence, statepresence_t jpresence
+		)
 	{
 		const apegrunt::Vector<real_t,N> masked_pseudocount( m_pseudocount, ipresence );
 
 		real_t normconst(0);
 		for( std::size_t j=0; j < N; ++j )
 		{
-			if( jpresence & (1<<j) )
+			if( apegrunt::is_true( jpresence, j ) )
 			{
 				// add pseudocounts and collect row sums
 				normconst += apegrunt::mask_sum( apegrunt::make_Vector_view<real_t,N>( buffer + j*N, 1 ) += masked_pseudocount, ipresence );
 			}
 		}
-		real_t sum(0);
 
-		real_t jointHsum(0), icondHsum(0);
+		real_t jointH(0), icondH(0), jcondH(0);
+		apegrunt::Vector<real_t,N> jcondHvec(0.0);
 		for( std::size_t j=0; j < N; ++j )
 		{
-			if( jpresence & (1<<j) )
+			if( apegrunt::is_true( jpresence, j ) )
 			{
 				// normalize elements on row j and calculate sum( x * log(x) ) over elements indicated by ipresence mask
 				// Note: we modify contents of buffer here
 				auto row_view = apegrunt::make_Vector_view<real_t,N>( buffer + j*N, 1 );
-				jointHsum += apegrunt::mask_sum_xlogx( row_view /= normconst, ipresence );
-				icondHsum += apegrunt::xlogx( apegrunt::sum( row_view ) );
+				jointH += apegrunt::mask_sum_xlogx( row_view /= normconst, ipresence );
+				icondH += apegrunt::xlogx( apegrunt::sum( row_view ) );
+				jcondHvec += row_view; // here we do N-popcnt(ipresence) unnecessary adds
 			}
-			sum += apegrunt::sum( apegrunt::make_Vector_view<real_t,N>( buffer + j*N, 1 ) );
 		}
-		*(jointH) = jointHsum;
-		*(icondH) = icondHsum;
+
+		jcondH = mask_sum_xlogx( jcondHvec, ipresence );
+
+		*solution = jointH - icondH - jcondH;
 	}
 
-	inline void get_jCondH_single( dest_ptr_t /*should be src_ptr_t*/ buffer, dest_ptr_t jcondH, statepresence_t ipresence, statepresence_t jpresence )
-	{
-		// As the coincidence matrix is always N-by-N, the following function needs to use masking
-		// in order apply log() only to elements present in the crosstable/coincidence matrix
-		real_t jcondHsum(0);
-		for( std::size_t j=0; j < N; ++j )
+	inline void single( dest_ptr_t mi_solution, std::size_t ipos, std::size_t jpos, bool cached=true )
+    {
+		const std::size_t iblock = apegrunt::get_block_index(ipos);
+		const std::size_t jblock = apegrunt::get_block_index(jpos);
+
+		const std::size_t iblock_size = iblock == m_last_block_index ? m_last_block_size : BlockSize;
+		const std::size_t jblock_size = jblock == m_last_block_index ? m_last_block_size : BlockSize;
+
+		const std::size_t i = apegrunt::get_pos_in_block(ipos);
+		const std::size_t j = apegrunt::get_pos_in_block(jpos);
+
+		const std::size_t bufpos = N*N*jblock_size*i+N*N*j;
+
+		// get statepresence tables
+		const auto statepresence_blocks_ptr = m_alignment->get_statepresence_blocks(); // keep shared_ptr alive
+		const auto& statepresence_blocks = *statepresence_blocks_ptr;
+		const auto& istatepresence = statepresence_blocks[iblock];
+		const auto& jstatepresence = statepresence_blocks[jblock];
+
+		// get the contigency/cross-table
+		if( cached )
 		{
-			//std::cout << apegrunt::make_Vector_view<real_t,N>( buffer + j*N, 1 ) << "\n";
-			if( ipresence & (1<<j) )
-			//if( jmask[j] )
+			if( !bool(m_cached_xtable_id) || m_cached_xtable_id != edge_t(iblock,jblock) )
+			//if( m_cached_xtable_id != apegrunt::EdgeID(iblock,jblock) )
 			{
-				jcondHsum += apegrunt::xlogx( apegrunt::sum( apegrunt::make_Vector_view<real_t,N>( buffer + j, N ) ) );
+				// get the crosstable/coincidence matrix
+				m_kernel( m_buffer.data(), iblock, jblock );
+
+				// update cache flags
+				m_cached_xtable_id = edge_t(iblock,jblock,true);
 			}
-
 		}
-		*(jcondH) = jcondHsum;
-	}
-
-	inline void normalize_and_get_jointH_icondH( dest_ptr_t /*should be src_ptr_t*/ buffer, dest_ptr_t jointH, dest_ptr_t icondH, statepresence_t ipresence, const statepresence_block_t& jpresence_block, std::size_t extent )
-	{
-		// As the coincidence matrix is always N-by-N, the following function needs to use masking
-		// in order to add pseudocounts only to elements present in the crosstable/coincidence matrix.
-
-		const apegrunt::Vector<real_t,N> masked_pseudocount( m_pseudocount, ipresence );
-		for( std::size_t i=0; i < extent; ++i )
+		else
 		{
-			const auto jmask = jpresence_block[i];
-			//const auto jmask = std::bitset<std::numeric_limits<statepresence_t>::digits>(jpresence_block[i]);
-
-			real_t normconst(0);
-			//const real_t normconst( real_t(istatecount*jstatecount_block[i])*m_pseudocount + m_neff ); // didn't work, normconst != sum(elements); apparently due to coincidence matrix round-off errors
-			for( std::size_t j=0; j < N; ++j )
-			{
-				if( jmask & (1<<j) )
-				//if( jmask[j] )
-				{
-					// add pseudocounts and collect row sums
-					normconst += apegrunt::mask_sum( apegrunt::make_Vector_view<real_t,N>( buffer + AccessOrder::ptr_increment(j,i,extent), 1 ) += masked_pseudocount, ipresence );
-				}
-			}
-
-			real_t jointHsum(0), icondHsum(0);
-			for( std::size_t j=0; j < N; ++j )
-			{
-				if( jmask & (1<<j) )
-				//if( jmask[j] )
-				{
-					// normalize elements on row j and calculate sum( x * log(x) ) over elements indicated by ipresence mask
-					auto row_view = apegrunt::make_Vector_view<real_t,N>( buffer + AccessOrder::ptr_increment(j,i,extent), 1 );
-					jointHsum += apegrunt::mask_sum_xlogx( row_view /= normconst, ipresence );
-					//icondHsum += apegrunt::xlogx( apegrunt::sum( row_view ) );
-					icondHsum += apegrunt::xlogx( apegrunt::mask_sum( row_view, ipresence ) );
-				}
-			}
-			*(jointH+i) = jointHsum;
-			*(icondH+i) = icondHsum;
+			m_kernel.single( m_buffer.data()+bufpos, ipos, jpos );
 		}
-	}
-/*
-	inline void sum_mat( real_t* const destination, statepresence_t ipresence, const statepresence_block_t& jpresence_block, std::size_t extent )
-	{
-		// As the coincidence matrix is always N-by-N, the following function needs to use masking
-		// in order apply log() only to elements present in the crosstable/coincidence matrix
-		for( std::size_t i=0; i < extent; ++i )
-		{
-			const auto jmask = std::bitset<std::numeric_limits<statepresence_t>::digits>(jpresence_block[i]);
-			apegrunt::Vector<real_t,N> row_sums;
-			for( std::size_t j=0; j < N; ++j )
-			{
-				if( jmask[j] )
-				{
-					//row_sums[j] = apegrunt::sum( apegrunt::make_Vector_view<real_t,N>( m_buffer.data() + AccessOrder::ptr_increment(j,i,extent), 1 ) );
-					row_sums[j] = apegrunt::sum( apegrunt::mask_xlogx( apegrunt::make_Vector_view<real_t,N>( m_buffer.data() + AccessOrder::ptr_increment(j,i,extent), 1 ), ipresence ) );
-				}
-			}
-			*(destination+i) = apegrunt::sum( row_sums );
-			//std::cout << "i=" << i << " sum=" << *(destination+i) << std::endl;
-		}
-	}
-*/
-/*
-	inline void sum_rows( real_t* const destination, statepresence_t ipresence, const statepresence_block_t& jpresence_block, std::size_t extent )
-	{
-		// As the coincidence matrix is always N-by-N, the following function needs to use masking
-		// in order apply log() only to elements present in the crosstable/coincidence matrix
 
-		for( std::size_t i=0; i < extent; ++i )
-		{
-			const auto jmask = std::bitset<std::numeric_limits<statepresence_t>::digits>(jpresence_block[i]);
-			//statepresence_t rowmask(0);
-			apegrunt::Vector<real_t,N> row_sums;
-			for( std::size_t j=0; j < N; ++j )
-			{
-				//std::cout << apegrunt::make_Vector_view<real_t,N>( m_buffer.data() + AccessOrder::ptr_increment(j,i,extent), 1 ) << " " << jmask[j] << std::endl;
-				if( jmask[j] )
-				{
-					//rowmask = rowmask | (1 << j);
-					row_sums[j] = apegrunt::sum( apegrunt::make_Vector_view<real_t,N>( m_buffer.data() + AccessOrder::ptr_increment(j,i,extent), 1 ) );
-				}
-			}
-			//std::cout << "i=" << i << " jmask=" << jmask << " rowmask=" << std::bitset<std::numeric_limits<statepresence_t>::digits>(rowmask) << " v=" << row_sums << std::endl;
-			*(destination+i) = apegrunt::mask_sum_xlogx( row_sums, jpresence_block[i] );
-		}
-	}
-*/
-	inline void get_jCondH( dest_ptr_t /*should be src_ptr_t*/ buffer, dest_ptr_t jcondH, statepresence_t ipresence, const statepresence_block_t& jpresence_block, std::size_t extent )
-	{
-		// As the coincidence matrix is always N-by-N, the following function needs to use masking
-		// in order apply log() only to elements present in the crosstable/coincidence matrix
-
-		//const auto jmask = std::bitset<std::numeric_limits<statepresence_t>::digits>(ipresence);
-		for( std::size_t i=0; i < extent; ++i )
-		{
-			const auto jpresence = jpresence_block[i];
-			real_t jcondHsum(0);
-			for( std::size_t j=0; j < N; ++j )
-			{
-				if( ipresence & (1<<j) )
-				//if( jmask[j] )
-				{
-					jcondHsum += apegrunt::xlogx( apegrunt::mask_sum( apegrunt::make_Vector_view<real_t,N>( buffer + AccessOrder::ptr_increment(0,i,extent)+j, AccessOrder::column_stride(extent) ), jpresence ) );
-				}
-			}
-			*(jcondH+i) = jcondHsum;
-		}
-	}
-
-	inline void mi( dest_ptr_t destination, src_ptr_t joint_H, src_ptr_t icond_H, src_ptr_t jcond_H, std::size_t extent )
-	{
-		for( std::size_t i=0; i < extent; ++i )
-		{
-			*(destination+i) = *(joint_H+i) - *(icond_H+i) - *(jcond_H+i);
-		}
-	}
+		// given the 1-by-1 coincidence matrix, add pseudocounts & normalize matrix,
+		// calculate the joint entropy H(i,j) and the conditional entropies H(i|j) and H(j|i).
+		// calculate MI as H(i,j) - H(i|j) - H(j|i)
+		this->normalize_and_get_mi_single( m_buffer.data()+bufpos, mi_solution, istatepresence[i/*ipos%BlockSize*/], jstatepresence[j/*jpos%BlockSize*/] );
+    }
 
 private:
     apegrunt::Alignment_ptr<state_t> m_alignment;
     std::vector<real_t> m_buffer; // coincidence matrix buffer
     const std::shared_ptr< std::vector<real_t> > m_weights;
+    apegrunt::Weighted_crosstable_2Dblock<state_t,real_t> m_kernel;
+    edge_t m_cached_xtable_id;
     //apegrunt::weighted_coincidence_block<state_t,real_t> m_coincidence_block_kernel;
     const real_t m_mi_threshold;
     const real_t m_pseudocount;
@@ -436,7 +249,7 @@ public:
 	using my_type = maxvaltracker<real_t>;
 
 	maxvaltracker() = delete;
-	maxvaltracker( std::size_t npos ) : m_npos(npos) { m_bins.resize(m_npos); }
+	explicit maxvaltracker( std::size_t npos ) : m_npos(npos) { m_bins.resize(m_npos); }
 
 	inline void operator()( std::size_t pos, real_t val ) { m_bins[pos](val); }
 
@@ -485,7 +298,6 @@ public:
 	using mi_parameters_t = MI_Parameters<state_t,real_t>;
 
 	MI_solver( std::vector< apegrunt::Alignment_ptr<state_t> > alignments,
-			//apegrunt::Graph_ptr storage,
 			real_t mi_threshold,
 			real_t pseudocount=0.5
 	)
@@ -497,7 +309,6 @@ public:
 	  m_solution( apegrunt::StateBlock_size*apegrunt::StateBlock_size, 0 ),
 	  //m_mi_distribution( acc::tag::distribution::binwidth=0.0001 ),
 	  m_colmax( alignments.front()->n_loci() )
-	  //m_loci_slice( loci_slice )
 	{
 		if( apegrunt::Apegrunt_options::linear_genome() )
 		{
@@ -513,7 +324,6 @@ public:
     : m_mi_parameters( other.m_mi_parameters ),
 	  m_stored_edges( apegrunt::make_Graph_ptr<apegrunt::Graph>() ), // empty network; private for each MI_solver instance
 	  m_stored_edges_wo_gaps( apegrunt::make_Graph_ptr<apegrunt::Graph>() ), // empty network; private for each MI_solver instance
-	  //m_storage( other.m_storage ),
 	  m_mi_block_kernel( other.m_mi_block_kernel ),
 	  m_cputimer( other.m_cputimer ),
 	  m_solution( other.m_solution.size(), 0 ), // each instance has its own private solution buffer
@@ -530,7 +340,6 @@ public:
     : m_mi_parameters( other.m_mi_parameters ),
 	  m_stored_edges( apegrunt::make_Graph_ptr<apegrunt::Graph>() ), // empty network; private for each MI_solver instance
 	  m_stored_edges_wo_gaps( apegrunt::make_Graph_ptr<apegrunt::Graph>() ), // empty network; private for each MI_solver instance
-	  //m_storage( other.m_storage ),
 	  m_mi_block_kernel( other.m_mi_block_kernel ),
 	  m_cputimer( other.m_cputimer ),
 	  m_solution( other.m_solution.size(), 0 ), // each instance has its own private solution vector
@@ -558,81 +367,12 @@ public:
 	inline real_t single( std::size_t ipos, std::size_t jpos )
 	{
 		real_t mi;
-		m_mi_block_kernel.single( &mi, ipos, jpos );
+		m_mi_block_kernel.single( &mi, ipos, jpos, false ); // false == crosstable not cached
 		return mi;
 	}
 
 	inline maxvaltracker<real_t>& get_quartiles() { return m_colmax; }
-/*
-	// Calculate MIs for a single position against a block of positions. Self interactions are included.
-	inline void operator()( std::size_t icol, std::size_t jblock, bool exclude_selfinteraction=true )
-	{
-		const std::size_t iblock = apegrunt::get_block_index(icol);
-		const std::size_t n_loci = m_mi_parameters.get_alignment()->n_loci(); // cache the number of loci
-		auto& stored_edges = *m_stored_edges;
 
-		m_cputimer.start();
-		const auto jblock_size = jblock == m_mi_parameters.get_last_block_index() ? m_mi_parameters.get_last_block_size() : m_mi_parameters.get_n_loci_per_block();
-		const auto threshold = m_mi_parameters.threshold();
-
-		// reset local solution buffer
-		for( auto& e: m_solution ) { e = 0.0; }
-
-		// calculate mutual information for all iblock versus jblock data columns
-		m_mi_block_kernel.single( m_solution.data(), icol, jblock ); // calculate MI values in 1-by-16 blocks
-
-		// lock shared storage for thread safety
-		//const auto&& scoped_lock = m_storage->acquire_lock(); // lock will expire once out of scope
-		stored_edges.lock(); // do the explicit thing instead, because why not?
-		std::size_t edges_added = stored_edges.size();
-		// store solutions
-		if( iblock == jblock && exclude_selfinteraction )
-		{
-			const std::size_t exclude = icol%apegrunt::StateBlock_size;
-			for( std::size_t i = 0; i < jblock_size; ++i )
-			{
-				if( i != exclude )
-				{
-					const auto mi = *(m_solution.data()+i);
-					//std::cout << " " << mi;
-					// Store all solutions that exceed threshold
-					if( threshold < mi )
-					{
-						stored_edges.add( icol, jblock*apegrunt::StateBlock_size+i, mi );
-					}
-				}
-			}
-		}
-		else
-		{
-			for( std::size_t i = 0; i < jblock_size; ++i )
-			{
-				const auto mi = *(m_solution.data()+i);
-				// Store all solutions that exceed threshold
-				//std::cout << " " << mi;
-				if( threshold < mi )
-				{
-					stored_edges.add( icol, jblock*apegrunt::StateBlock_size+i, mi );
-				}
-			}
-		}
-		edges_added = stored_edges.size() - edges_added;
-		stored_edges.unlock();
-
-		m_cputimer.stop();
-
-		if( SpydrPick_options::verbose() )
-		{
-			const auto col_begin = 1+jblock*m_mi_parameters.get_n_loci_per_block();
-			const auto col_end = col_begin + jblock_size - 1;
-			// buffer output in a ss before committing it to the ostream,
-			// in order to keep output clean when run in multi-threaded mode.
-			std::ostringstream oss;
-			oss << "  " << icol << " x " << col_begin << "-" << col_end << " / " << n_loci << " (" << delta << " new edges) time=" << m_cputimer << "\n";
-			*SpydrPick_options::get_out_stream() << oss.str();
-		}
-	}
-*/
 	// Calculate MIs for a range of blocks against all other blocks in an upper triangular matrix. Self interactions are excluded.
 	template< typename RangeT >
     inline void operator()( const RangeT& block_index_range )
@@ -644,13 +384,15 @@ public:
 		auto& stored_edges = *m_stored_edges;
 		std::size_t edges_added = stored_edges.size();
 
+		std::vector< apegrunt::EdgeID<true> > gap_edges;
+		gap_edges.reserve( apegrunt::StateBlock_size*apegrunt::StateBlock_size );
+
 		for( const auto iblock: block_index_range )
 		{
 			m_cputimer.start();
 			const auto iblock_size = iblock == m_mi_parameters.get_last_block_index() ? m_mi_parameters.get_last_block_size() : m_mi_parameters.get_n_loci_per_block();
 			const auto threshold = m_mi_parameters.threshold();
 			const auto& igappresence = gappresence_blocks[iblock];
-			const bool iblock_has_gaps = apegrunt::popcnt( igappresence );
 
 			// symmetric matrix; compute upper triangular block matrices
 			for( std::size_t jblock = iblock; jblock < apegrunt::get_number_of_blocks(n_loci); ++jblock )
@@ -659,13 +401,10 @@ public:
 				for( auto& e: m_solution ) { e = 0.0; }
 
 				const auto& jgappresence = gappresence_blocks[jblock];
-				const bool jblock_has_gaps = apegrunt::popcnt( jgappresence );
 
 				// calculate mutual information for all iblock versus jblock data columns
 				m_mi_block_kernel.block( m_solution.data(), iblock, jblock ); // calculate MI values in 16-by-16 blocks
 				const auto jblock_size = jblock == m_mi_parameters.get_last_block_index() ? m_mi_parameters.get_last_block_size() : m_mi_parameters.get_n_loci_per_block();
-
-				std::vector< std::pair<std::size_t,std::size_t> > stored_edges_internal; stored_edges_internal.reserve( iblock_size*jblock_size );
 
 				// lock shared storage for thread safety
 				//const auto&& scoped_lock = m_storage->acquire_lock(); // lock will expire once out of scope
@@ -691,7 +430,7 @@ public:
 							if( threshold < mi )
 							{
 								stored_edges.add( ipos, jpos, mi );
-								if( igappresence[i] || jgappresence[j] ) { stored_edges_internal.emplace_back(i,j); }
+								if( igappresence[i] || jgappresence[j] ) { gap_edges.emplace_back(i,j); }
 							}
 						}
 					}
@@ -715,7 +454,7 @@ public:
 							if( threshold < mi )
 							{
 								stored_edges.add( ipos, jpos, mi );
-								if( igappresence[i] || jgappresence[j] ) { stored_edges_internal.emplace_back(i,j); }
+								if( igappresence[i] || jgappresence[j] ) { gap_edges.emplace_back(i,j); }
 							}
 						}
 					}
@@ -725,59 +464,28 @@ public:
 
 				{
 					// if we've stored MIs and the active node blocks contain gaps, then re-evaluate edges while excluding the gap contribution
-					//if( delta != 0 && (iblock_has_gaps || jblock_has_gaps) )
-					if( stored_edges_internal.size() != 0 )
+					if( !gap_edges.empty() )
 					{
 						// reset local solution buffer
 						for( auto& e: m_solution ) { e = 0.0; }
-						// calculate MI values in 16-by-16 blocks; rather wasteful, but then again, the single MI kernel is also slow
-						m_mi_block_kernel.block( m_solution.data(), iblock, jblock, true ); // exclude the gap contribution
+						// calculate a block of MI values, excluding gap contribution; this call should re-use the cached crosstable
+						m_mi_block_kernel.block( m_solution.data(), iblock, jblock, true ); // true == exclude the gap contribution
 
 						m_stored_edges_wo_gaps->lock();
-						for( const auto& pair: stored_edges_internal )
+						for( const auto& edge: gap_edges )
 						{
-							const auto i = pair.first;
-							const auto j = pair.second;
+							//const auto i = pair.first;
+							//const auto j = pair.second;
+							const auto i = edge.first();
+							const auto j = edge.second();
 							const auto ipos = iblock*apegrunt::StateBlock_size+i;
 							const auto jpos = jblock*apegrunt::StateBlock_size+j;
 							const auto mi = *(m_solution.data()+jblock_size*i+j);
 							m_stored_edges_wo_gaps->add( ipos, jpos, mi );
 						}
-/*
-						if( iblock == jblock ) // blocks on the diagonal
-						{
-							for( std::size_t i = 0; i < iblock_size; ++i )
-							{
-								const auto ipos = iblock*apegrunt::StateBlock_size+i;
-								for( std::size_t j = i+1; j < jblock_size; ++j ) // j = i would be on the diagonal, hence j = i+1
-								{
-									if( igappresence[i] || jgappresence[j] )
-									{
-										const auto jpos = jblock*apegrunt::StateBlock_size+j;
-										const auto mi = *(m_solution.data()+jblock_size*i+j);
-										m_stored_edges_wo_gaps->add( ipos, jpos, mi );
-									}
-								}
-							}
-						}
-						else
-						{
-							for( std::size_t i = 0; i < iblock_size; ++i )
-							{
-								const auto ipos = iblock*apegrunt::StateBlock_size+i;
-								for( std::size_t j = 0; j < jblock_size; ++j )
-								{
-									if( igappresence[i] || jgappresence[j] )
-									{
-										const auto jpos = jblock*apegrunt::StateBlock_size+j;
-										const auto mi = *(m_solution.data()+jblock_size*i+j);
-										m_stored_edges_wo_gaps->add( ipos, jpos, mi );
-									}
-								}
-							}
-						}
-*/
+
 						m_stored_edges_wo_gaps->unlock();
+						gap_edges.clear();
 					}
 				}
 			}
