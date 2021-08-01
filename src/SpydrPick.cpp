@@ -56,7 +56,7 @@ int main(int argc, char **argv)
 
 	using real_t = double;
 	using default_state_t = apegrunt::nucleic_acid_state_t;
-	using alignment_default_storage_t = apegrunt::Alignment_impl_block_compressed_storage< apegrunt::StateVector_impl_block_compressed_alignment_storage<default_state_t> >;
+	//using alignment_default_storage_t = apegrunt::Alignment_impl_block_compressed_storage< apegrunt::StateVector_impl_block_compressed_alignment_storage<default_state_t> >;
 
 	// Parse command line options
 
@@ -174,7 +174,6 @@ int main(int argc, char **argv)
 		}
 	}
 
-// /*
 	stopwatch::stopwatch steptimer( SpydrPick_options::verbose() ? SpydrPick_options::get_out_stream() : nullptr ); // for timing statistics
 	if( SpydrPick_options::verbose() )
 	{
@@ -205,7 +204,7 @@ int main(int argc, char **argv)
 					*SpydrPick_options::get_out_stream() << "SpydrPick: trim alignment based on include list \"" << include_list->id_string() << "\"\n";
 				}
 				cputimer.start();
-				alignment = apegrunt::Alignment_factory< alignment_default_storage_t >().include( alignment, include_list );
+				alignment = alignment->subset( include_list );
 				cputimer.stop();
 				if( SpydrPick_options::verbose() ) { cputimer.print_timing_stats(); *SpydrPick_options::get_out_stream() << "\n"; }
 			}
@@ -226,7 +225,7 @@ int main(int argc, char **argv)
 					*SpydrPick_options::get_out_stream() << "SpydrPick: trim alignment based on exclude list \"" << exclude_list->id_string() << "\"\n";
 				}
 				cputimer.start();
-				alignment = apegrunt::Alignment_factory< alignment_default_storage_t >().exclude( alignment, exclude_list );
+				alignment = alignment->subset( alignment->get_loci_translation() - exclude_list ); // set difference gives include_list
 				cputimer.stop();
 				if( SpydrPick_options::verbose() ) { cputimer.print_timing_stats(); *SpydrPick_options::get_out_stream() << "\n"; }
 			}
@@ -238,21 +237,65 @@ int main(int argc, char **argv)
 			cputimer.start();
 			if( SpydrPick_options::verbose() )
 			{
-				*SpydrPick_options::get_out_stream() << "SpydrPick: apply filter rules";
+				*SpydrPick_options::get_out_stream() << "SpydrPick: apply filter rules..";
 				SpydrPick_options::get_out_stream()->flush();
 			}
-			auto alignment_filter = apegrunt::Alignment_filter( apegrunt::Alignment_filter::ParameterPolicy::AQUIRE_GLOBAL );
 			//auto alignment_filter = apegrunt::Alignment_filter( apegrunt::Alignment_filter::ParameterPolicy::FILTER_SNPS );
-			alignment = alignment_filter.operator()<alignment_default_storage_t>( alignment );
+			auto alignment_filter = apegrunt::Alignment_filter( apegrunt::Alignment_filter::ParameterPolicy::AQUIRE_GLOBAL );
+			const auto filter_list = alignment_filter.get_filter_list(alignment);
 			cputimer.stop();
+
 			if( SpydrPick_options::verbose() )
 			{
-				*SpydrPick_options::get_out_stream() << "\n";
-				alignment->statistics( SpydrPick_options::get_out_stream() );
+				*SpydrPick_options::get_out_stream() << " " << filter_list->size() << " positions fulfill filter criteria\n";
 				cputimer.print_timing_stats(); *SpydrPick_options::get_out_stream() << "\n";
+				SpydrPick_options::get_out_stream()->flush();
 			}
 
+			if( filter_list->size() != alignment->n_loci() )
+			{
+				if( filter_list->size() == 0  )
+				{
+					if( SpydrPick_options::verbose() )
+					{
+						*SpydrPick_options::get_out_stream() << "SpydrPick: nothing to do\n";
+						SpydrPick_options::get_out_stream()->flush();
+					}
+					exit(EXIT_SUCCESS);
+				}
+
+				cputimer.start();
+				{
+					alignment = alignment->subset( filter_list, (SpydrPick_options::verbose() ? SpydrPick_options::get_out_stream() : nullptr) );
+				}
+				cputimer.stop();
+				if( SpydrPick_options::verbose() )
+				{
+					cputimer.print_timing_stats(); *SpydrPick_options::get_out_stream() << "\n";
+					SpydrPick_options::get_out_stream()->flush();
+				}
+
+				cputimer.start();
+				alignment->statistics( SpydrPick_options::get_out_stream() );
+				cputimer.stop();
+				if( SpydrPick_options::verbose() )
+				{
+					cputimer.print_timing_stats(); *SpydrPick_options::get_out_stream() << "\n";
+					SpydrPick_options::get_out_stream()->flush();
+				}
+
+				if( alignment->n_loci() == 0 ) // filtering produced an empty alignment
+				{
+					if( SpydrPick_options::verbose() )
+					{
+						*SpydrPick_options::get_out_stream() << "SpydrPick: subset alignment is empty\n" << "SpydrPick: nothing to do\n";
+						SpydrPick_options::get_out_stream()->flush();
+					}
+					exit(EXIT_SUCCESS);
+				}
+			}
 		}
+
 		if( apegrunt::Apegrunt_options::has_samplelist_filename() )
 		{
 			if( SpydrPick_options::verbose() )
@@ -269,10 +312,16 @@ int main(int argc, char **argv)
 				*SpydrPick_options::get_out_stream() << "SpydrPick: trim alignment samples based on sample list \"" << sample_list->id_string() << "\"\n";
 			}
 			cputimer.start();
-			alignment = apegrunt::Alignment_factory< alignment_default_storage_t >().copy_selected( alignment, sample_list, sample_list->id_string() );
+			alignment = alignment->subsample( sample_list, (SpydrPick_options::verbose() ? SpydrPick_options::get_out_stream() : nullptr) );
 			cputimer.stop();
 			if( SpydrPick_options::verbose() ) { cputimer.print_timing_stats(); }
  		}
+
+		// assign sample weights (parse from file or determine automatically)
+		apegrunt::cache_sample_weights( alignment );
+
+		// output sample weigths, if specified using the cmd line option
+		apegrunt::output_sample_weights( alignment );
 
 		if( apegrunt::Apegrunt_options::output_filtered_alignment() )
 		{
@@ -280,31 +329,37 @@ int main(int argc, char **argv)
 			apegrunt::output_alignment( alignment );
 		}
 
-		// assign sample weights (parse from file or determine automatically)
-		apegrunt::cache_sample_weights( alignment );
-
-		// output sample weigths, if specified using the cmd line option
-		output_sample_weights( alignment );
-
 		// get state frequency profile and output to file
 		apegrunt::output_state_frequencies( alignment );
 
 		// automatically determine MI threshold
 		if( SpydrPick_options::get_mi_threshold() < 0 )
 		{
-			cputimer.start();
+			const std::size_t max_pairs = 10000000; // restrict auto-determined #pairs to a *reasonable* number; used only if auto code is triggered and user has not specified how many to save
+			const std::size_t top_pairs_to_save = SpydrPick_options::get_mi_values() != 0 ? SpydrPick_options::get_mi_values() : std::min( max_pairs, 100*alignment->n_loci() );
+
 			if( SpydrPick_options::verbose() )
 			{
-				*SpydrPick_options::get_out_stream() << "SpydrPick: determine MI save threshold";
+				*SpydrPick_options::get_out_stream() << "SpydrPick: determine MI threshold for saving approx. " << top_pairs_to_save << " top pairs\n";
+				SpydrPick_options::get_out_stream()->flush();
 			}
-			const std::size_t top_pairs_to_save = SpydrPick_options::get_mi_values() != 0 ? SpydrPick_options::get_mi_values() : 100*alignment->n_loci();
+			cputimer.start();
 			const auto mi_threshold = determine_MI_threshold<double>( alignment, top_pairs_to_save );
 			SpydrPick_options::set_mi_threshold( mi_threshold );
-			cputimer.stop()
-			;if( SpydrPick_options::verbose() )
+			cputimer.stop();
+			if( SpydrPick_options::verbose() )
 			{
-				*SpydrPick_options::get_out_stream() << "SpydrPick: MI save threshold = " << std::setprecision(6) << SpydrPick_options::get_mi_threshold() << " (save approx. " << top_pairs_to_save << " top pairs)\n";
-				cputimer.print_timing_stats();	*SpydrPick_options::get_out_stream() << "\n";
+				*SpydrPick_options::get_out_stream() << "SpydrPick: MI save threshold = " << std::setprecision(6) << SpydrPick_options::get_mi_threshold() << "\n";
+				cputimer.print_timing_stats(); *SpydrPick_options::get_out_stream() << "\n";
+				SpydrPick_options::get_out_stream()->flush();
+			}
+		}
+		else
+		{
+			if( SpydrPick_options::verbose() )
+			{
+				*SpydrPick_options::get_out_stream() << "SpydrPick: user-defined MI save threshold = " << std::setprecision(6) << SpydrPick_options::get_mi_threshold() << "\n";
+				SpydrPick_options::get_out_stream()->flush();
 			}
 		}
 
@@ -432,12 +487,12 @@ int main(int argc, char **argv)
 		cputimer.start();
 		{ // extract outlier node indices
 			const auto outlier_node_list = apegrunt::extract_node_indices( network.network, [=](const auto& edge){ return edge.weight() >= network.outlier_threshold; } );
-			*SpydrPick_options::get_out_stream() << " found " << outlier_node_list->size() << " edges\n";
+			*SpydrPick_options::get_out_stream() << " found " << outlier_node_list->size() << " nodes\n";
 			SpydrPick_options::get_out_stream()->flush();
 
 			if( outlier_node_list->size() < alignments[0]->n_loci() && outlier_node_list->size() != 0 )
 			{
-				auto outlier_node_alignment = apegrunt::Alignment_factory< alignment_default_storage_t >().include( alignments[0], outlier_node_list );
+				auto outlier_node_alignment = alignments[0]->subset( outlier_node_list, (SpydrPick_options::verbose() ? SpydrPick_options::get_out_stream() : nullptr) );
 				cputimer.stop(); cputimer.print_timing_stats(); SpydrPick_options::get_out_stream()->flush();
 
 				if( outlier_node_alignment->n_loci() != 0 )
