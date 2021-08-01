@@ -1,6 +1,6 @@
 /** @file spydrpick_version.h
 
-	Copyright (c) 2017-2018 Santeri Puranen.
+	Copyright (c) 2017-2021 Santeri Puranen.
 
 	This program is free software: you can redistribute it and/or modify
 	it under the terms of the GNU Affero General Public License as
@@ -26,7 +26,7 @@ namespace spydrpick {
 struct spydrpick_version
 {
 	static const int s_MajorVersion = 1; // substantial rewrite
-	static const int s_MinorVersion = 2; // feature change
+	static const int s_MinorVersion = 3; // feature change
 	static const int s_SubminorVersion = 0; // bugfix, small enhancement
 };
 
