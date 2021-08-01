@@ -51,7 +51,7 @@ template< typename NodeIdT, typename EdgeIdT, typename RealT >
 apegrunt::Graph_ptr remap_and_initialize( const apegrunt::Graph_ptr network, std::vector< std::vector< std::pair<NodeIdT,EdgeIdT> > >& node_neighborhoods, std::vector< std::shared_ptr<std::mutex> >& node_mtx, std::unordered_map<NodeIdT,NodeIdT>& node_map)
 {
     using node_id_t = NodeIdT;
-    using edge_id_t = EdgeIdT;
+    //using edge_id_t = EdgeIdT;
     using real_t = RealT;
     const std::uint32_t node_mtx_grouping_size = aracne::ARACNE_options::node_grouping_size();
 
@@ -96,8 +96,8 @@ public:
 
     block_reader( apegrunt::Graph_ptr network, std::vector< std::vector< std::pair<node_id_t,edge_id_t> > >& node_neighborhoods, std::vector< std::shared_ptr<std::mutex> >& node_mtx, std::vector< std::pair<node_id_t,node_id_t> >& edges_block, std::size_t block_start )
     : m_network(network),
-      m_node_neighborhoods(node_neighborhoods),
       m_node_mtx(node_mtx),
+      m_node_neighborhoods(node_neighborhoods),
       m_edges_block(edges_block),
       m_block_start(block_start),
       m_node_mtx_grouping_size(aracne::ARACNE_options::node_grouping_size())
@@ -286,10 +286,10 @@ public:
     }
 
 private:
-    const double m_threshold;
-    const std::size_t m_block_start;
     apegrunt::Graph_ptr m_network;
     std::vector< std::vector< std::pair<node_id_t,edge_id_t> > >& m_node_neighborhoods;
+    const double m_threshold;
+    const std::size_t m_block_start;
     std::vector<std::vector<std::size_t>>& m_indirect_edges;
 
     // Process a single edge.
