@@ -12,7 +12,6 @@ set( ${CMAKE_PROJECT_NAME}_NO_APEGRUNT true CACHE INTERNAL "Don't use Apegrunt, 
 
 if( ${CMAKE_PROJECT_NAME}_ENABLE_APEGRUNT )
 	setup_message( "check for Apegrunt" )
-	add_definitions( -DNDEBUG )
 	add_subdirectory( apegrunt )
 
 	if( APEGRUNT_FOUND )

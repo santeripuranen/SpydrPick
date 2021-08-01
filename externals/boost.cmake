@@ -24,7 +24,7 @@ if( ${CMAKE_PROJECT_NAME}_ENABLE_BOOST )
 		# Use the host's preferred installation prefix, if defined
 		if( NOT BOOST_ROOT AND DEFINED ENV{BOOST_ROOT}  )
 			set( BOOST_ROOT $ENV{BOOST_ROOT} )
-			message( "Got BOOST_ROOT=\"${BOOST_ROOT}\" from shell variable" )
+			message( "got BOOST_ROOT=\"${BOOST_ROOT}\" from shell variable" )
 		endif()
 		
 		if( BOOST_ROOT )

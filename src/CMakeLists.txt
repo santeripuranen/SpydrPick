@@ -30,21 +30,29 @@ set( SPYDRPICK_SOURCES
 
 set( CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin )
 
+### General executable flags
+set( SPYDRPICK_EXE_LINKER_FLAGS "-fPIE -static-libstdc++" ) # -static
+
+if("${CMAKE_CXX_COMPILER_ID}" MATCHES "GNU")
+	set( CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} ${SPYDRPICK_EXE_LINKER_FLAGS}" )
+elseif("${CMAKE_CXX_COMPILER_ID}" MATCHES "Clang")
+	set( CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} ${SPYDRPICK_EXE_LINKER_FLAGS}" )
+endif()
+
+
 ### General optimization flags	
-set( SPYDRPICK_OPTIMIZATION_FLAGS "${SPYDRPICK_OPTIMIZATION_FLAGS} -msse3 -mpopcnt -static-libstdc++" )
-set( SPYDRPICK_OPTIMIZATION_FLAGS "${SPYDRPICK_OPTIMIZATION_FLAGS} -ftree-vectorize -fwhole-program" )
-set( SPYDRPICK_OPTIMIZATION_FLAGS "${SPYDRPICK_OPTIMIZATION_FLAGS} -flto -ffat-lto-objects" ) # -flto-report" )
-#set( CMAKE_CXX_FLAGS "${SPYDRPICK_OPTIMIZATION_FLAGS}" )
+set( SPYDRPICK_OPTIMIZATION_FLAGS "${SPYDRPICK_OPTIMIZATION_FLAGS} -O3 -msse2" ) #-mpopcnt" ) # -msse3
+set( SPYDRPICK_OPTIMIZATION_FLAGS "${SPYDRPICK_OPTIMIZATION_FLAGS} -ftree-vectorize" ) # don't use -fwhole-program in combination with -flto
 
 # GCC-specific optimization flags
-set( SPYDRPICK_GCC_OPTIMIZATION_FLAGS "${SPYDRPICK_OPTIMIZATION_FLAGS}" )
+set( SPYDRPICK_GCC_OPTIMIZATION_FLAGS "-flto -ffat-lto-objects -fopenmp" ) # -flto-report"
 
 # Clang-specific optimization flags
-set( SPYDRPICK_CLANG_OPTIMIZATION_FLAGS "${SPYDRPICK_OPTIMIZATION_FLAGS}" )
+set( SPYDRPICK_CLANG_OPTIMIZATION_FLAGS "-flto=thin -fopenmp" )
 
 
 ### General release build flags
-set( SPYDRPICK_RELEASE_FLAGS "-Wall -w -fvisibility=hidden -fvisibility-inlines-hidden" ) # CMake will add '-O3 -DNDEBUG'
+set( SPYDRPICK_RELEASE_FLAGS "-DNDEBUG -Wall -w -fvisibility=hidden -fvisibility-inlines-hidden" ) # CMake will add '-O2 -DNDEBUG' for Release builds
 
 # GCC-specific release build flags
 set( SPYDRPICK_GCC_RELEASE_FLAGS "-Wl,--strip-all" )
@@ -53,14 +61,15 @@ set( SPYDRPICK_GCC_RELEASE_FLAGS "-Wl,--strip-all" )
 set( SPYDRPICK_CLANG_RELEASE_FLAGS "-Wl,-s" )
 
 if("${CMAKE_CXX_COMPILER_ID}" MATCHES "GNU")
-	set( CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} ${SPYDRPICK_OPTIMIZATION_FLAGS} ${SPYDRPICK_GCC_OPTIMIZATION_FLAGS} ${SPYDRPICK_RELEASE_FLAGS} ${SPYDRPICK_GCC_RELEASE_FLAGS}")
+	# Bulldoze CMake's default CMAKE_CXX_FLAGS_RELEASE
+	set( CMAKE_CXX_FLAGS_RELEASE "${SPYDRPICK_OPTIMIZATION_FLAGS} ${SPYDRPICK_GCC_OPTIMIZATION_FLAGS} ${SPYDRPICK_RELEASE_FLAGS} ${SPYDRPICK_GCC_RELEASE_FLAGS}")
 elseif("${CMAKE_CXX_COMPILER_ID}" MATCHES "Clang")
 	set( CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} ${SPYDRPICK_OPTIMIZATION_FLAGS} ${SPYDRPICK_CLANG_OPTIMIZATION_FLAGS} ${SPYDRPICK_RELEASE_FLAGS} ${SPYDRPICK_CLANG_RELEASE_FLAGS}")
 endif()
 
 
 ### General debug build flags
-set( SPYDRPICK_DEBUG_FLAGS "-pg -g -ftree-vectorizer-verbose=2 -Wall" )
+set( SPYDRPICK_DEBUG_FLAGS "-O3 -g -ftree-vectorizer-verbose=2 -Wall" )
 
 # GCC-specific debug build flags
 set( SPYDRPICK_GCC_DEBUG_FLAGS "" )
@@ -72,6 +81,15 @@ if("${CMAKE_CXX_COMPILER_ID}" MATCHES "GNU")
 	set( CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} ${SPYDRPICK_OPTIMIZATION_FLAGS} ${SPYDRPICK_GCC_OPTIMIZATION_FLAGS} ${SPYDRPICK_DEBUG_FLAGS} ${SPYDRPICK_GCC_DEBUG_FLAGS}")
 elseif("${CMAKE_CXX_COMPILER_ID}" MATCHES "Clang")
 	set( CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} ${SPYDRPICK_OPTIMIZATION_FLAGS} ${SPYDRPICK_CLANG_OPTIMIZATION_FLAGS} ${SPYDRPICK_DEBUG_FLAGS} ${SPYDRPICK_CLANG_DEBUG_FLAGS}")
+endif()
+
+### General profiling build flags
+set( SPYDRPICK_PROFILE_FLAGS "-DNDEBUG -Wall -w -fno-omit-frame-pointer" ) # add "-pg" to instrument for gprof; perf is happy as long as symbols and frame pointers are present 
+
+if("${CMAKE_CXX_COMPILER_ID}" MATCHES "GNU")
+	set( CMAKE_CXX_FLAGS_PROFILE "${CMAKE_CXX_FLAGS_PROFILE} ${SPYDRPICK_OPTIMIZATION_FLAGS} ${SPYDRPICK_GCC_OPTIMIZATION_FLAGS} ${SPYDRPICK_PROFILE_FLAGS}")
+elseif("${CMAKE_CXX_COMPILER_ID}" MATCHES "Clang")
+	set( CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} ${SPYDRPICK_OPTIMIZATION_FLAGS} ${SPYDRPICK_CLANG_OPTIMIZATION_FLAGS} ${SPYDRPICK_PROFILE_FLAGS}")
 endif()
 
 
@@ -93,7 +111,7 @@ if( SPYDRPICK_SOURCES )
 	)
 	target_link_libraries( SpydrPick libapegrunt )
 	#target_link_libraries( SpydrPick ${APEGRUNT_LIBRARIES} )
-	set_target_properties( SpydrPick PROPERTIES COMPILE_FLAGS "--std=c++14" )
+	#set_target_properties( SpydrPick PROPERTIES COMPILE_FLAGS "--std=c++14" )
 endif()
 
 
@@ -106,11 +124,6 @@ if( NOT SPYDRPICK_NO_BOOST )
 	target_link_libraries( SpydrPick ${Boost_LIBRARIES} )
 endif()
 
-# Add TBB libraries
-if( NOT SPYDRPICK_NO_TBB )
-	target_link_libraries( SpydrPick ${TBB_LIBRARIES} )
-endif()
-
 # Add pthreads library if building in UNIX
 if( UNIX )
 	target_link_libraries( SpydrPick pthread )
@@ -119,6 +132,11 @@ endif()
 # Add librt when building in Linux (required by the Bioconda build environment)
 if( UNIX AND NOT APPLE )
 	target_link_libraries( SpydrPick rt )
+endif()
+
+# Add TBB libraries
+if( NOT SPYDRPICK_NO_TBB )
+	target_link_libraries( SpydrPick "-Wl,-Bdynamic ${TBB_LIBRARIES}" )
 endif()
 
 # Prevent linking against shared libraries on OS X;
