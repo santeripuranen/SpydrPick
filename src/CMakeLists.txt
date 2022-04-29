@@ -2,20 +2,9 @@
 
 # SpydrPick src
 
-############################
-## Add sources and includes
+###############
+## Add sources
 ###
-
-include_directories(
-	${SPYDRPICK_INCLUDE_DIR}
-	${APEGRUNT_INCLUDE_DIR}
-	$(ARACNE_INCLUDE_DIR)
-	${CMAKE_CURRENT_BINARY_DIR}
-	${Boost_INCLUDE_DIRS}
-	${TBB_INCLUDE_DIRS}
-)
-
-link_directories( ${Boost_LIBRARY_DIRS} )
 
 set( SPYDRPICK_SOURCES
 	SpydrPick.cpp
@@ -24,14 +13,14 @@ set( SPYDRPICK_SOURCES
 ) # *.cpp *.hpp *.cc
 
 
-#################################
-## Add libraries and executables
+#####################
+## Add compile flags
 ###
 
 set( CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin )
 
 ### General executable flags
-set( SPYDRPICK_EXE_LINKER_FLAGS "-fPIE -static-libstdc++" ) # -static
+set( SPYDRPICK_EXE_LINKER_FLAGS "-fPIE -static-libstdc++ -fopenmp" ) # -static
 
 if("${CMAKE_CXX_COMPILER_ID}" MATCHES "GNU")
 	set( CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} ${SPYDRPICK_EXE_LINKER_FLAGS}" )
@@ -45,7 +34,7 @@ set( SPYDRPICK_OPTIMIZATION_FLAGS "${SPYDRPICK_OPTIMIZATION_FLAGS} -O3 -msse2" )
 set( SPYDRPICK_OPTIMIZATION_FLAGS "${SPYDRPICK_OPTIMIZATION_FLAGS} -ftree-vectorize" ) # don't use -fwhole-program in combination with -flto
 
 # GCC-specific optimization flags
-set( SPYDRPICK_GCC_OPTIMIZATION_FLAGS "-flto -ffat-lto-objects -fopenmp" ) # -flto-report"
+set( SPYDRPICK_GCC_OPTIMIZATION_FLAGS "-flto -ffat-lto-objects" ) # -flto-report"
 
 # Clang-specific optimization flags
 set( SPYDRPICK_CLANG_OPTIMIZATION_FLAGS "-flto=thin -fopenmp" )
@@ -94,7 +83,11 @@ endif()
 
 
 ### Set preferred linker
-set( CMAKE_LINKER "ld.gold" )
+if("${CMAKE_CXX_COMPILER_ID}" MATCHES "GNU")
+	set( CMAKE_LINKER "ld.gold" )
+elseif("${CMAKE_CXX_COMPILER_ID}" MATCHES "Clang")
+	set( CMAKE_LINKER "ld.lld" )
+endif()
 
 
 #################################
@@ -106,12 +99,19 @@ set( CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib ) # static libraries
 set( CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin )
 
 if( SPYDRPICK_SOURCES )
-	add_executable( SpydrPick
-		${SPYDRPICK_SOURCES}
-	)
+	add_executable( SpydrPick ${SPYDRPICK_SOURCES} )
 	target_link_libraries( SpydrPick libapegrunt )
-	#target_link_libraries( SpydrPick ${APEGRUNT_LIBRARIES} )
-	#set_target_properties( SpydrPick PROPERTIES COMPILE_FLAGS "--std=c++14" )
+
+	target_include_directories( SpydrPick PRIVATE
+		${SPYDRPICK_INCLUDE_DIR}
+		$(ARACNE_INCLUDE_DIR)
+		${Boost_INCLUDE_DIRS}
+		${TBB_INCLUDE_DIRS}
+	)
+	
+	if( NOT SPYDRPICK_NO_BOOST )
+		target_link_directories( SpydrPick PRIVATE ${Boost_LIBRARY_DIRS} )
+	endif()
 endif()
 
 
