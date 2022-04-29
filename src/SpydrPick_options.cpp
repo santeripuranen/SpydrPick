@@ -79,7 +79,7 @@ const std::string SpydrPick_options::s_version_string(
 );
 
 const std::string SpydrPick_options::s_copyright_notice(
-	std::string("Copyright (c) 2018-2021 Santeri Puranen and Juri Kuronen\nLicensed under the GNU Affero General Public License version 3.\n\n")
+	std::string("Copyright (c) 2018-2021 Santeri Puranen and Juri Kuronen | Licensed under AGPLv3\n\n")
 	+ "THIS SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND."
 );
 
